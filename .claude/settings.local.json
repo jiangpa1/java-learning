@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node generate_plan.js)",
+      "Bash(python \"C:/Users/ASUS/AppData/Local/Claude-3p/local-agent-mode-sessions/skills-plugin/00000000-0000-4000-8000-000000000001/67819d54-98dd-4a8b-ace9-bc252e1506d8/skills/docx/scripts/office/soffice.py\" --headless --convert-to pdf \"Java后端实习每日学习计划_v2.docx\")"
+    ]
+  }
+}
