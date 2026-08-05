@@ -22,6 +22,9 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 7.26 | File 类（路径、CRUD、递归遍历）、反转链表、合并有序链表 | #206, #21 |
 | 7.27 | Stream 流（filter/map/collect/分组）、合并有序数组、相交链表 | #88, #160 |
 | 7.28 | IO字节流：FileInputStream/FileOutputStream、BufferedStream性能对比 | 休息 |
+| 7.29 | 休息 | - |
+| 7.30 | 休息 | - |
+| 7.31 | IO字符流：FileReader/FileWriter、BufferedReader/BufferedWriter、回文链表、删除倒数第N个结点 | #234, #19 |
 
 ## 项目
 
