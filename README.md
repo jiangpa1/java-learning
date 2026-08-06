@@ -25,6 +25,9 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 7.29 | 休息 | - |
 | 7.30 | 休息 | - |
 | 7.31 | IO字符流：FileReader/FileWriter、BufferedReader/BufferedWriter、回文链表、删除倒数第N个结点 | #234, #19 |
+| 8.1 | 休息 | - |
+| 8.2 | 休息 | - |
+| 8.3 | IO实战：随机点名系统（生成名单 + 概率抽取 + 不重复 + 多轮循环） | - |
 
 ## 项目
 
