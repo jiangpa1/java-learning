@@ -28,6 +28,10 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 8.1 | 休息 | - |
 | 8.2 | 休息 | - |
 | 8.3 | IO实战：随机点名系统（生成名单 + 概率抽取 + 不重复 + 多轮循环） | - |
+| 8.4 | 休息 | - |
+| 8.5 | 休息 | - |
+| 8.6 | 多线程基础：三种创建方式（Thread/Runnable/Callable）、start vs run、生命周期 | #5, #20 |
+| 8.7 | 多线程：线程安全、synchronized（三种用法、锁升级）、最大子数组和、买卖股票 | #53, #121 |
 
 ## 项目
 
