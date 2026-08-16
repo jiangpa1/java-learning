@@ -32,7 +32,8 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 8.5 | 休息 | - |
 | 8.6 | 多线程基础：三种创建方式（Thread/Runnable/Callable）、start vs run、生命周期 | #5, #20 |
 | 8.7 | 多线程：线程安全、synchronized（三种用法、锁升级）、最大子数组和、买卖股票 | #53, #121 |
-
+| 8.15 | 多线程：volatile、CAS、ABA、线程池7参数与拒绝策略、只出现一次的数字 | #136 |
+| 8.16 | JVM：运行时数据区五部分、堆栈区别、可达性分析、垃圾回收算法、分代回收、二叉树最大深度/翻转 | #104, #226 |
 ## 项目
 
 - 博客系统（进行中）
