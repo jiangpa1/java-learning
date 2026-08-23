@@ -37,6 +37,9 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 8.17 | JVM：垃圾收集器(Serial/Parallel/CMS/G1)、类加载双亲委派、合并二叉树/对称二叉树 | #617, #101 |
 | 8.18 | MySQL：SQL基础(DDL/DML/DQL)、JOIN、GROUP BY、索引入门、有序数组转二叉搜索树/平衡二叉树 | #108, #110 |
 | 8.19 | MySQL：B+树原理、聚簇/非聚簇索引、回表、覆盖索引、最左前缀、二叉搜索树搜索 | #700, #653 |
+| 8.20 | MySQL：EXPLAIN执行计划、SQL优化、事务ACID、四种隔离级别、二叉搜索树插入/验证 | #701, #98 |
+| 8.21 | MySQL：MVCC(隐藏列/undo log/ReadView)、快照读vs当前读、行锁/间隙锁/临键锁、死锁 | #230, #530 |
+| 8.22 | MySQL：主从复制binlog/relay log、读写分离、分库分表、二叉搜索树最近公共祖先/中序遍历 | #235, #94 |
 ## 项目
 
 - 博客系统（进行中）
