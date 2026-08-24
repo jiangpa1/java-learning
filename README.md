@@ -40,6 +40,7 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 8.20 | MySQL：EXPLAIN执行计划、SQL优化、事务ACID、四种隔离级别、二叉搜索树插入/验证 | #701, #98 |
 | 8.21 | MySQL：MVCC(隐藏列/undo log/ReadView)、快照读vs当前读、行锁/间隙锁/临键锁、死锁 | #230, #530 |
 | 8.22 | MySQL：主从复制binlog/relay log、读写分离、分库分表、二叉搜索树最近公共祖先/中序遍历 | #235, #94 |
+| 8.23 | MySQL：InnoDB架构(Buffer Pool/Change Buffer)、redo log/undo log/Double Write、WAL、层序遍历 | #102, #107 |
 ## 项目
 
 - 博客系统（进行中）
