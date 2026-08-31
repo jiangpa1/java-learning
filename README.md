@@ -43,6 +43,8 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 8.23 | MySQL：InnoDB架构(Buffer Pool/Change Buffer)、redo log/undo log/Double Write、WAL、层序遍历 | #102, #107 |
 | 8.24 | MySQL：redo log深入、binlog区别、两阶段提交、崩溃恢复、二叉树右视图/层平均值 | #199, #637 |
 | 8.25 | MySQL：索引失效8大场景、EXPLAIN实战验证、慢查询日志、相同的树/另一棵树的子树 | #100, #572 |
+| 8.26 | MySQL：三大范式、电商库表设计、HikariCP/Druid连接池、慢查询定位流程、二叉树直径/路径总和 | #543, #112 |
+| 8.31 | Redis：入门、为什么快、五种数据结构及场景、用栈实现队列/用队列实现栈 | #232, #225 |
 ## 项目
 
 - 博客系统（进行中）
