@@ -49,6 +49,10 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.2 | Redis：分布式锁(SETNX/Lua/Redisson)、过期删除、内存淘汰策略、逆波兰表达式 | #150, #239 |
 | 9.3 | Redis：主从/哨兵/集群、哈希槽、缓存一致性(Cache Aside/延迟双删)、字符串解码/每日温度 | #394, #739 |
 | 9.4 | Redis：底层数据结构(SDS/quicklist/跳表)、单线程模型、IO多路复用epoll、第K大元素/前K高频 | #215, #347 |
+| 9.5 | Redis：六大场景实战、高频面试题自测、LRU缓存/LFU缓存 | #146, #460 |
+| 9.6 | Redis总复习 + Spring Boot环境搭建、HelloWorld | #206, #21 |
+| 9.8 | Spring Boot：IOC/DI、Bean与容器、@Component/@Service/@Autowired、三层结构 | #206, #21 |
+| 9.9 | Spring Boot：AOP(切面/切点/通知/动态代理)、自动配置原理、最长公共前缀/两数组交集 | #14, #349 |
 ## 项目
 
 - 博客系统（进行中）
