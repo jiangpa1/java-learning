@@ -51,7 +51,7 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.11 | Spring Boot：统一响应Result、@Valid参数校验、@RestControllerAdvice全局异常、移动零/合并有序数组 | \#283, #88 |
 | 9.12 | Spring Boot：JWT登录认证、拦截器vs过滤器、HandlerInterceptor权限校验、有序数组平方/两数之和II | \#977, #167 |
 | 9.13 | 项目实战：博客系统建表、用户模块(注册/登录/BCrypt加密/JWT)、反转字符串 | \#344, #557 |
-| 9.13 | 项目实战：文章模块CRUD、分页查询、作者权限校验、反转字符串中的单词/验证回文串 | \#151, #125 |
+| 9.14 | 项目实战：文章模块CRUD、分页查询、作者权限校验、反转字符串中的单词/验证回文串 | \#151, #125 |
 ## 项目
 
 - 博客系统（进行中）
