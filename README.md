@@ -21,15 +21,9 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 7.25 | ArrayList vs LinkedList 源码、泛型、反射、环形链表 | #141, #142 |
 | 7.26 | File 类（路径、CRUD、递归遍历）、反转链表、合并有序链表 | #206, #21 |
 | 7.27 | Stream 流（filter/map/collect/分组）、合并有序数组、相交链表 | #88, #160 |
-| 7.28 | IO字节流：FileInputStream/FileOutputStream、BufferedStream性能对比 | 休息 |
-| 7.29 | 休息 | - |
-| 7.30 | 休息 | - |
+| 7.28 | IO字节流：FileInputStream/FileOutputStream、BufferedStream性能对比 |  |
 | 7.31 | IO字符流：FileReader/FileWriter、BufferedReader/BufferedWriter、回文链表、删除倒数第N个结点 | #234, #19 |
-| 8.1 | 休息 | - |
-| 8.2 | 休息 | - |
 | 8.3 | IO实战：随机点名系统（生成名单 + 概率抽取 + 不重复 + 多轮循环） | - |
-| 8.4 | 休息 | - |
-| 8.5 | 休息 | - |
 | 8.6 | 多线程基础：三种创建方式（Thread/Runnable/Callable）、start vs run、生命周期 | #5, #20 |
 | 8.7 | 多线程：线程安全、synchronized（三种用法、锁升级）、最大子数组和、买卖股票 | #53, #121 |
 | 8.15 | 多线程：volatile、CAS、ABA、线程池7参数与拒绝策略、只出现一次的数字 | #136 |
@@ -53,6 +47,11 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.6 | Redis总复习 + Spring Boot环境搭建、HelloWorld | #206, #21 |
 | 9.8 | Spring Boot：IOC/DI、Bean与容器、@Component/@Service/@Autowired、三层结构 | #206, #21 |
 | 9.9 | Spring Boot：AOP(切面/切点/通知/动态代理)、自动配置原理、最长公共前缀/两数组交集 | #14, #349 |
+| 9.10 | Spring Boot：Spring MVC请求流程、RESTful注解、MyBatis-Plus集成CRUD、删除重复项/移除元素 | #26, #27 |
+| 9.11 | Spring Boot：统一响应Result、@Valid参数校验、@RestControllerAdvice全局异常、移动零/合并有序数组 | \#283, #88 |
+| 9.12 | Spring Boot：JWT登录认证、拦截器vs过滤器、HandlerInterceptor权限校验、有序数组平方/两数之和II | \#977, #167 |
+| 9.13 | 项目实战：博客系统建表、用户模块(注册/登录/BCrypt加密/JWT)、反转字符串 | \#344, #557 |
+| 9.13 | 项目实战：文章模块CRUD、分页查询、作者权限校验、反转字符串中的单词/验证回文串 | \#151, #125 |
 ## 项目
 
 - 博客系统（进行中）
