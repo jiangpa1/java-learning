@@ -10,7 +10,7 @@ void main() {
     h2.next = h3;
     h3.next = h4;
     h4.next = h5;
-    ListNode result = reverseList(head);
+    ListNode result = reverseList4(head);
     while(result != null){
         System.out.println(result.val);
         result = result.next;
@@ -83,4 +83,17 @@ public ListNode reverseList3(ListNode head) {
 
     // 返回新的头节点
     return newHead;
+}
+
+//递归4
+public ListNode reverseList4(ListNode head) {
+    ListNode prev = null;
+    ListNode curr = head;
+    while (head.next != null) {
+        prev = head.next;
+        head.next = prev.next;
+        prev.next = curr;
+        curr = prev;
+    }
+    return prev;
 }
