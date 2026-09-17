@@ -54,6 +54,7 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.14 | 项目实战：文章模块CRUD、分页查询、作者权限校验、反转字符串中的单词/验证回文串 | \#151, #125 |
 | 9.15 | 项目实战：分类模块(4接口)+评论模块(3接口)、代码审查修复3个bug、建立Java后端知识库.md | \#704, #34 |
 | 9.16 | 项目实战：文章详情Redis缓存(Cache Aside/浏览量Redis计数/空值防穿透)、Controller改构造器注入、清理冗余索引；计网TCP三次握手四次挥手；前端JS入门 | \#35, #875 |
+| 9.17 | 项目实战：JWT双Token(access30m+refresh7d、type校验、登出黑名单、refresh轮转)、修复同秒签发token相同的jti缺陷、安全层fail-closed vs 性能层fail-open；知识库补3条JWT条目；力扣长度最小的子数组 | \#209 |
 ## 项目
 
 - 博客系统（进行中）

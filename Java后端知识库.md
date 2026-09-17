@@ -48,6 +48,7 @@
 - [计数器什么时候回写数据库（惰性 vs 定时）](#计数器什么时候回写数据库惰性-vs-定时)
 - [为什么生产环境禁用 KEYS 命令](#为什么生产环境禁用-keys-命令)
 - [Redis key 到底占多少内存，永久保存会不会爆](#redis-key-到底占多少内存永久保存会不会爆)
+- [缓存三兄弟：穿透 / 击穿 / 雪崩怎么区分](#缓存三兄弟穿透--击穿--雪崩怎么区分)
 
 **计算机网络**
 - [TCP 三次握手与四次挥手](#tcp-三次握手与四次挥手)
@@ -56,6 +57,11 @@
 **Spring**
 - [@RestController vs @Controller](#restcontroller-vs-controller)
 - [构造器注入 vs 字段注入](#构造器注入-vs-字段注入)
+
+**JWT 与鉴权**
+- [为什么需要双 Token](#为什么需要双-token)
+- [登出怎么让 JWT 立即失效](#登出怎么让-jwt-立即失效)
+- [安全层 fail-closed 与性能层 fail-open](#安全层-fail-closed-与性能层-fail-open)
 
 ---
 
@@ -623,6 +629,53 @@ redis-cli INFO memory | grep used_memory_human       # 整体
 
 ---
 
+### 缓存三兄弟：穿透 / 击穿 / 雪崩怎么区分
+
+**问题**：缓存穿透、缓存击穿、缓存雪崩经常被混为一谈，怎么区分？
+
+**答案**：先看这张表 —— **关键看"数据存不存在"和"范围多大"**：
+
+| | **穿透** | **击穿** | **雪崩** |
+| --- | --- | --- | --- |
+| **数据存不存在** | **不存在** | **存在** | 存在 |
+| **范围** | 单个/多个不存在的 key | **单个热点 key** | **大量 key** |
+| **触发条件** | 一直查不存在的数据 | 热点 key **刚失效**的瞬间 | 大量 key **同时失效**，或 Redis 整体挂 |
+| **后果** | 每次都打 DB（可被恶意利用） | 瞬时并发打 DB | DB 被整体打垮 |
+| **对策** | 空对象缓存 / 布隆过滤器 | 互斥锁重建 / 逻辑过期 | TTL 加随机 + 降级 + 限流 |
+
+**一句话记忆**：
+
+- **穿透** = 数据**本来就没有**，缓存"挡不住"
+- **击穿** = 数据**有**，但**一个热点**的缓存破了，一群请求冲进 DB
+- **雪崩** = **一大片**缓存同时破了（或缓存层整个不可用）
+
+**三种对策的细节**：
+
+1. **穿透 → 空对象缓存**：查 DB 为空也写一个哨兵值（短 TTL）。不能存 `null`（序列化器不接受，且读出来分不清"空值"和"未命中"）。选它还是布隆过滤器取决于 **key 空间大小**——key 有上界、无恶意流量就用空对象。
+2. **击穿 → 互斥锁**：`setIfAbsent(lockKey, uuid, 10, SECONDS)` 只让一个请求重建，其他等待后重读缓存。**四个坑**：锁必须包住 DB 查询、锁要有过期时间、解锁放 `finally`、重试要有上限。更严谨还要「UUID + Lua 校验后删」防误删别人的锁。替代方案是**逻辑过期**（不设 Redis TTL，过期时间放进 value，发现逻辑过期就返回旧值 + 异步重建）。
+3. **雪崩 → TTL 加随机**：`ttl = BASE + random(JITTER)`，把过期时间打散到一个窗口，避免集体失效。另外 Redis 整体宕机也会造成雪崩，这靠**降级**兜底。
+
+**⚠️ 降级要覆盖"依赖不可用"，不只是"依赖返回坏数据"**：很多人的降级只写了"反序列化失败就当 miss"，但**连接失败是另一回事**。若 `redisTemplate.get(...)` 直接抛 `RedisConnectionFailureException`（`RuntimeException`），而你的 catch 只捕获 `JsonProcessingException`，异常会一路冒到全局异常处理器 → **整个接口 500**，而不是降级查 DB。所以缓存操作要单独包一层：任何 Redis 异常都退化成"未命中 / 跳过回填"，**绝不让缓存故障升级成业务故障**。
+
+**本项目实例**（Learning 项目 `ArticleServiceImpl`，2026-09-16~17）：
+
+| 问题 | 代码位置 | 实现 |
+| --- | --- | --- |
+| Cache Aside | 读 L59~107 / 写 L198~199、L215~216 | 读时回填；写时**删**缓存（不是更新） |
+| **穿透** | L66~68（命中哨兵）/ L231~234（写哨兵） | `__NULL__` 哨兵 + 2 分钟 TTL |
+| **击穿** | L82~106 | `setIfAbsent` 互斥锁 + 等待重试 + 兜底 |
+| **雪崩** | L246 + 降级 L75~78、L249~251 | TTL 30 分钟 ± 5 分钟随机；序列化失败降级 |
+
+**踩过的真实坑（很有讲头）**：锁最初加在 DB 查询**之后** —— 要保护的那次查询在锁外面，**等于没加**。挪进锁内才真正生效。
+
+**面试怎么答**：这题最适合**主动带出来讲项目**，因为它证明的是"踩过并解决了真实问题"而不是背概念。推荐串法：
+
+> "文章详情我做了 Redis 缓存，用 Cache Aside。过程中踩了四类问题。**穿透**用空对象缓存 + 短 TTL，没选布隆过滤器因为博客 id 空间有限、误判和复杂度不划算。**雪崩**给 TTL 加了随机偏移，另外做了降级保证缓存故障不影响接口。**击穿**用 `setIfAbsent` 互斥锁，只让一个请求重建 —— 这里我踩过一个坑：锁本来加在 DB 查询之后，等于没加，挪进锁里才生效。还有一个是**缓存与计数器的冲突**：浏览量要求每次访问都写 DB，缓存要求命中时不查 DB，两者直接矛盾，所以我把浏览量拆出来用 Redis `INCR`，缓存 miss 时才回写。"
+
+**这段话里有设计取舍、有踩坑、有量化**，比"我用了 Redis 做缓存"强得多。追问方向：击穿和穿透的区别（答：数据存不存在）、互斥锁的代价（答：抢不到锁的请求要等待，所以有逻辑过期这个替代方案）、降级怎么做（答：缓存操作包一层，异常退化为不用缓存）。
+
+---
+
 # 计算机网络
 
 ### TCP 三次握手与四次挥手
@@ -755,6 +808,88 @@ public class ArticleServiceImpl implements ArticleService {
 对比 `ArticleController` / `UserController` 用的都是 `@RestController`，是当时的正确写法。
 
 **面试怎么答**：答"`@RestController` = `@Controller` + `@ResponseBody`，前者返回视图名后者返回 JSON"。**更有价值的追问方向**：为什么漏写 stereotype 注解会静默失效（答：`@ComponentScan` 只认 `@Component` 及其派生注解，`@RequestMapping` 不在其中）。再补一句"这类错误编译期发现不了，必须靠真正调用接口来验证"。
+
+---
+
+# JWT 与鉴权
+
+### 为什么需要双 Token
+
+**问题**：JWT 是无状态的，签发之后服务端改不了它，那过期时间该设多长？
+
+**答案**：单 token 无论设多长都是错的 —— 设长了，登出/改密后旧 token 在有效期内一直能用；设短了，用户每隔半小时被踢去登录一次。所以把两个矛盾的需求拆成两个 token：
+
+| | access token | refresh token |
+|---|---|---|
+| 有效期 | 30 分钟 | 7 天 |
+| 用在哪 | 每个业务请求的 `Authorization` 头 | 只用来调 `/auth/refresh` 换新 access |
+| 存哪 | 前端内存 / localStorage | 前端 + 服务端 Redis |
+| 泄露后果 | 最多被冒用 30 分钟 | 可以整条作废 |
+
+两个 token **用同一个密钥签**，靠自定义 claim `type` 区分。**必须双向校验 type**：业务接口只收 `type=access`，刷新接口只收 `type=refresh`。漏了这一步，7 天的 refresh 就能直接当 access 用 —— 双 token 的设计收益直接归零。
+
+**⚠️ 踩过的真坑：同一秒签发的两个 token 完全相同。** JWT 的 `iat`/`exp` 是**秒级精度**，payload 里又没有随机字段，所以同一用户在同一秒内签发的两个 token 字节级一模一样。表现为"登录后马上 refresh，新旧 refresh 相等"→ **refresh 轮转形同虚设，旧 token 没被换掉**。修法是签发时加唯一 id：`.setId(UUID.randomUUID().toString())`（即 JWT 标准里的 `jti`）。这个问题手工点接口很容易漏，因为人手点两次通常已经跨秒了；要写脚本在同一秒内连发两次才暴露。
+
+**本项目实例**（Learning，2026-09-17）：
+- `src/main/java/com/jiangpa/utils/JwtUtils.java`：`generateToken(userId, username, Duration ttl, String typ)` 统一签发，`setClaim("type", ...)` + `setId(UUID...)`；
+- `src/main/java/com/jiangpa/interceptor/JwtInterceptor.java`：`isAccessToken()` 不通过就 401「token 类型错误」；
+- `src/main/java/com/jiangpa/service/impl/TokenServiceImpl.java`：`refresh()` 里 `isRefreshToken()` 校验，轮转时复用 `issue()`。
+
+**面试怎么答**：先给结论"用双 token 把'有效期短'和'可撤销'这两个矛盾需求拆开"，再主动讲 jti 那个坑 —— 它证明你真的测过而不是照抄教程。追问方向：为什么不用 Session（答：JWT 无状态、易水平扩展，代价就是撤销要额外机制）、refresh 泄露怎么办（答：存 Redis 绑定 userId + 轮转，异常即整条删除）、refresh 存 localStorage 还是 httpOnly Cookie（答：Cookie 防 XSS 但有 CSRF，要配 SameSite）。
+
+---
+
+### 登出怎么让 JWT 立即失效
+
+**问题**：JWT 无状态、服务端不存它，"退出登录"凭什么让它立刻失效？
+
+**答案**：JWT 本身撤销不了，必须在服务端补一点状态，两条路：
+
+| | 黑名单（减法） | 白名单 / 单端登录（加法） |
+|---|---|---|
+| 存什么 | 已作废的 access | 有效的 refresh |
+| key | `token:blacklist:{sha256(token)}` | `token:refresh:{userId}` |
+| TTL | 该 token 的**剩余有效期** | refresh 的有效期（7 天） |
+| 校验时机 | 每个请求查一次 | 只在 refresh 时查 |
+| 语义 | 默认有效，逐个作废 | 默认无效，登录才生效 |
+
+关键细节：
+1. **存哈希不存原文**：key 用 `SHA-256(token)`，避免把可用凭证原文写进 Redis、监控和日志；
+2. **TTL 取剩余有效期**而不是固定值：token 本来就只剩 3 分钟，黑名单存 30 分钟纯属浪费。`getRemainingMillis(token)` 算出来给 Redis；
+3. 已经过期的 token 不用进黑名单（它本来就无效），所以解析要能容忍 `ExpiredJwtException`，否则"用过期 token 登出"会直接报错卡住前端；
+4. refresh 以 `userId` 为 key **覆盖式写入** = 天然的单端登录（后登录的挤掉先登录的）；key 换成 `userId + deviceId` 就变成多端登录。
+
+**本项目实例**：`TokenServiceImpl.logout()`（`stripBearer` → `parseQuietly` 容忍过期 → 删 refresh key → `remaining > 0` 才写黑名单）、`CacheKeys.tokenRefresh(userId)` / `tokenBlacklist(hash)`；拦截器每个请求查一次 `isRevoked()`。实测登出后同一个 access 再访问业务接口 → 401「登录已失效」。
+
+**面试怎么答**：答"JWT 撤销要在服务端补状态：access 走黑名单、存哈希、TTL 取剩余有效期；refresh 用 userId 作 key 存 Redis，覆盖写入顺便实现单端登录"。追问方向：黑名单会不会无限增长（答：TTL 自动清理，量级只有"30 分钟内的登出次数"）、为什么不用布隆过滤器（答：需要删除，布隆不支持删除）、多端登录怎么改。
+
+---
+
+### 安全层 fail-closed 与性能层 fail-open
+
+**问题**：Redis 挂了，接口应该降级放行还是直接报错？
+
+**答案**：看这一层是**性能层**还是**安全层**，两者策略正好相反：
+
+| | 性能层（缓存） | 安全层（鉴权 / 黑名单） |
+|---|---|---|
+| Redis 挂了 | **fail-open**：当未命中，直接查 DB | **fail-closed**：拒绝请求，报错 |
+| 返回 | 正常 200（只是变慢） | 503 |
+| 理由 | 缓存只是加速，挂了顶多慢一点 | "查不到黑名单" ≠ "没被拉黑"，放行 = 所有已登出的 token 集体复活 |
+
+代码形态几乎一样（都是 `try/catch` 包住 Redis 调用），**差别只在 catch 里写什么**：缓存里是 `return null`（降级），鉴权里是 `throw new BusinessException(503, "鉴权服务暂不可用")`（fail-closed）。能主动说出"同一段 try/catch、两层相反策略"比背概念更能体现工程判断。
+
+**状态码要分清 401 和 503**：
+- **401 = 凭证本身无效**（过期、签名错、被拉黑）→ 前端应清 token、跳登录页；
+- **503 = 鉴权服务不可用**（Redis 挂了）→ token 可能还是好的，前端**保留 token 稍后重试**。
+
+把 503 当 401 处理，结果就是"Redis 抖一下，全站用户被踢下线"。
+
+**本项目实例**：
+- `ArticleServiceImpl` 的缓存包装方法全部 `catch (Exception)` → 降级查 DB（2026-09-16 实测：停掉 Redis，文章详情接口仍正常返回）；
+- `TokenServiceImpl.isRevoked()` → `catch (Exception)` 后 `throw new BusinessException(503, ...)`，绝不 `return false`。
+
+**面试怎么答**：结论先行 —— "降级策略取决于这层是性能还是安全：缓存 fail-open，鉴权 fail-closed"。追问方向：fail-closed 会不会让 Redis 变成拖垮登录的单点（答：会，所以要 Redis 高可用 + 短超时，但不能为了可用性牺牲鉴权）、还有哪些类似取舍（答：限流、风控、幂等去重）。
 
 ---
 
