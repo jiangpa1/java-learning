@@ -55,7 +55,9 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.15 | 项目实战：分类模块(4接口)+评论模块(3接口)、代码审查修复3个bug、建立Java后端知识库.md | \#704, #34 |
 | 9.16 | 项目实战：文章详情Redis缓存(Cache Aside/浏览量Redis计数/空值防穿透)、Controller改构造器注入、清理冗余索引；计网TCP三次握手四次挥手；前端JS入门 | \#35, #875 |
 | 9.17 | 项目实战：JWT双Token(access30m+refresh7d、type校验、登出黑名单、refresh轮转)、修复同秒签发token相同的jti缺陷、安全层fail-closed vs 性能层fail-open；知识库补3条JWT条目；力扣长度最小的子数组 | \#209 |
+| 9.18 | 项目实战：逻辑删除(@TableLogic+唯一索引冲突取舍)、角色权限(@RequireRole+授权拦截器+水平/纵向越权)、refresh异常处理(500→401)、接口限流(滑动窗口+Lua+拦截器顺序)、六处Redis依赖降级实测；代码审查修复8个缺陷；4份设计文档回填实现记录；知识库补6条 | - |
+
 ## 项目
 
-- 博客系统（进行中）
-- 秒杀 Demo
+- 博客系统 Learning（进行中）：19→20 个接口，含 JWT 双 Token 鉴权、Redis 缓存、逻辑删除、角色权限、接口限流
+- 秒杀 Demo（待开始）

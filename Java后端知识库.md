@@ -57,11 +57,20 @@
 **Spring**
 - [@RestController vs @Controller](#restcontroller-vs-controller)
 - [构造器注入 vs 字段注入](#构造器注入-vs-字段注入)
+- [@Valid 漏写 = 所有校验注解静默失效](#valid-漏写--所有校验注解静默失效)
 
 **JWT 与鉴权**
 - [为什么需要双 Token](#为什么需要双-token)
 - [登出怎么让 JWT 立即失效](#登出怎么让-jwt-立即失效)
 - [安全层 fail-closed 与性能层 fail-open](#安全层-fail-closed-与性能层-fail-open)
+- [Redis 六处依赖的降级方向与超时代价](#redis-六处依赖的降级方向与超时代价)
+- [JWT 登录与鉴权的完整链路](#jwt-登录与鉴权的完整链路)
+- [refresh token 什么时候轮换](#refresh-token-什么时候轮换)
+- [JWT 异常要在哪几处 catch](#jwt-异常要在哪几处-catch)
+
+**认证与授权**
+- [认证 ≠ 授权：水平越权和纵向越权](#认证--授权水平越权和纵向越权)
+- [删除/修改类接口的权限判断写反了会怎样](#删除修改类接口的权限判断写反了会怎样)
 
 ---
 
@@ -890,6 +899,350 @@ public class ArticleServiceImpl implements ArticleService {
 - `TokenServiceImpl.isRevoked()` → `catch (Exception)` 后 `throw new BusinessException(503, ...)`，绝不 `return false`。
 
 **面试怎么答**：结论先行 —— "降级策略取决于这层是性能还是安全：缓存 fail-open，鉴权 fail-closed"。追问方向：fail-closed 会不会让 Redis 变成拖垮登录的单点（答：会，所以要 Redis 高可用 + 短超时，但不能为了可用性牺牲鉴权）、还有哪些类似取舍（答：限流、风控、幂等去重）。
+
+---
+
+### JWT 登录与鉴权的完整链路
+
+**问题**：一次"登录 → 带着 token 访问业务接口"在后端到底经过了哪些环节？每一环各自负责什么、失败时返什么码？
+
+**答案**：拆成两段 —— **签发段**（登录，不需要 token）和 **验证段**（业务接口，每个请求都走一遍）。
+
+**第一段：`POST /auth/login`**
+
+```
+@Valid 参数校验（Bean Validation，失败 → 400）
+  → UserService.authenticate：查 tb_user + BCrypt.matches
+       失败统一返 400「用户名或密码错误」（不区分用户不存在 / 密码错 → 防用户名枚举）
+  → TokenService.issue：签 access(30m) + refresh(7d)
+       Redis SET learning:token:refresh:{userId} = sha256(refresh)  TTL 7 天
+  → { code:200, data:{ accessToken, refreshToken, expiresIn } }
+```
+
+关键点：**登录接口必须放行拦截器**（`/auth/**`），否则"拿 token 得先有 token"死锁。另外 `issue` 里用 `set` 而不是 `setIfAbsent` —— 覆盖是期望行为（新登录挤掉旧 refresh = 单端登录）。返回 `expiresIn` 是给前端**提前 60 秒主动刷新**用的，比"等 401 再重试"体验好。
+
+**第二段：`GET /article/1` + `Authorization: Bearer <access>`，拦截器 `preHandle` 五步**
+
+| 步 | 做什么 | 不过时 |
+|---|---|---|
+| 1 | 取 `Authorization` 头，null/空判 | 401「未登录，请先登录」 |
+| 2 | 剥 `Bearer `（先判长度再 `substring` 防越界；`equalsIgnoreCase`） | 401「token 格式错误」 |
+| 3 | `parseToken`：验签 + 验期 + 验 `iss` | 401「token 无效 / 已过期」 |
+| 4 | **`type` 必须是 `access`** | 401「token 类型错误」 |
+| 5 | **查黑名单**（Redis `hasKey`） | 命中 → 401；Redis 异常 → **503** |
+| 6 | 挂 `userId` / `username` 到 request attribute，`return true` | — |
+
+第 4 步漏了，7 天的 refresh 就能当 access 用，双 token 白做；第 5 步的 503 是 fail-closed（见上一条）。
+
+**第 6 步之后身份怎么用**：Controller 用 `@RequestAttribute("userId") Long userId` 取，**DTO 里根本没有 userId 字段**。作者 id 只从 JWT 拿，允许前端传 = 任何人改个数字就能以别人名义发文（最典型的越权漏洞）。`getUserId` 从 `sub` 取而不是 `id` claim，因为 JSON 数字可能被反序列化成 `Integer`。
+
+**⚠️ 一个容易忽略的执行细节：拦截器里抛的异常谁能接住？**
+
+`preHandle` 里 `throw new BusinessException(503, ...)` 一路穿透到 `@RestControllerAdvice`，靠的是两件事同时成立：
+
+1. **`BusinessException extends RuntimeException`，不是 `JwtException` 的子类** —— 所以不会被 `catch (JwtException e)` 那个兜底分支吃掉（拦截器里三个 catch 都不会误伤它）；
+2. **`preHandle` 是在 `DispatcherServlet.doDispatch` 的 try 块内被调用的** —— 所以异常能走到 `HandlerExceptionResolver` 链。如果它是在 `doDispatch` 之外调的（比如 Filter 层），`@RestControllerAdvice` 就接不住了，得自己往 response 里写。
+
+**本项目实例**（Learning，2026-09-17 双 Token 改造后）：
+- `config/WebMvcConfig.java`：`addPathPatterns("/**")` + `excludePathPatterns("/auth/**", "/error")`（`/error` 不放行会让真实错误被 401 盖住）；
+- `controller/AuthController.java`：`login` 只做"`userService.authenticate` 认证 → `tokenService.issue` 签发"，**认证与签发分开是为了避免 `UserService` ↔ `TokenService` 循环依赖**；
+- `service/impl/UserServiceImpl.java`：`authenticate()` 里两处 `throw new BusinessException(400, "用户名或密码错误")` 文案完全相同；
+- `utils/JwtUtils.java`：私有 `generateToken(userId, username, ttl, type)` 统一签发（`type` claim + `jti`）；
+- `interceptor/JwtInterceptor.java`：五步校验 + `writeUnauthorized()`（自己往 response 写 401 JSON，因为 `preHandle` 返 false 不会自动生成响应体）；
+- `service/impl/TokenServiceImpl.java`：`issue` / `refresh` / `logout` / `isRevoked`；
+- 全链路业务码在 `code` 里，HTTP 状态码恒 200。
+
+**面试怎么答**：按"签发段 → 验证段"两段讲，验证段用五步串起来，重点砸在三个地方：① 放行 `/auth/**` 的原因；② `type` 校验漏了会怎样（refresh 变万能通行证）；③ 黑名单失败为什么返 503 不返 401。追问方向：拦截器返 false 为什么还要自己写响应（答：Spring 不会帮你生成响应体，不写前端收到内容为空的 200）、`@RequestAttribute` 和从 body 拿 userId 的区别（答：越权）、拦截器和 Filter 的区别（答：Filter 更早、拿不到 handler，但能覆盖静态资源；拦截器能拿到 `HandlerMethod`）、异常在拦截器里抛为什么也能被全局异常处理器接住（答：`preHandle` 在 `doDispatch` 的 try 块内 + 异常不是 `JwtException` 子类）。
+
+---
+
+### refresh token 什么时候轮换
+
+**问题**：refresh 轮换到底由什么触发？访问业务接口时会轮换吗？登录会吗？另外——为什么每次刷新后登录状态又能续 7 天？
+
+**答案**：**唯一触发点 = `POST /auth/refresh` 校验通过的那一次**。轮换不是定时任务，也不由业务请求触发；它由"用户来换新 access"这个动作驱动。
+
+```
+POST /auth/refresh { refreshToken: R1 }
+  ├─ parseToken(R1)：验签 + 验期，失败 → 401
+  ├─ isRefreshToken(claims)：失败 → 401「token 类型错误」
+  ├─ Redis GET token:refresh:{userId}，与 sha256(R1) 比对，不匹配 → 401
+  └─ 通过 → issue(userId, username)
+        ├─ 签 A2（新 access）、R2（新 refresh）
+        ├─ Redis SET token:refresh:{userId} = sha256(R2)，TTL 重新计满 7 天  ← ★ 覆盖即轮换
+        └─ 返回 { A2, R2, expiresIn }（R1 当场作废，即使用它自身还没过期）
+```
+
+**哪些地方不轮换**（契约边界，别想当然）：
+
+| 动作 | 结果 |
+|---|---|
+| 访问业务接口（带 A1） | 完全不碰 refresh；A1 也不变，30 分钟内一直可用 |
+| `POST /auth/logout` | 只 `DEL token:refresh:{userId}` + A1 进黑名单，**不签发任何新 token**（登出后没有"下一个 refresh"） |
+| 再次登录 | 也是覆盖 `token:refresh:{userId}`，但语义是**新建会话**，不是轮换 |
+| access token | **从不轮换**。它无状态、改不了，只能等自然过期或登出时进黑名单 |
+
+**★ 最容易被忽略的一点：轮换顺带把 TTL 重置成满 7 天 → 滑动窗口续期。**
+
+`issue()` 里 `SET` 的 TTL 是 `refreshExpiration`（7 天这个**常量**），不是 `getRemainingMillis(R1)`（剩余时间）。所以**每一次 refresh 都把过期时间推到"此刻 + 7 天"** —— 过期时间点随刷新动作不断右移，这就是**滑动窗口续期（sliding expiration）**，而不是"从登录起 7 天到点就走"的固定窗口。
+
+**但要分清哪一半是后端保证的、哪一半不是**：
+
+| | 谁决定 | 说明 |
+|---|---|---|
+| **每次 refresh 都把 TTL 重置为满** | ✅ **后端保证**（代码事实） | `issue()` 传常量 TTL，写死的行为 |
+| **"每 30 分钟刷新一次"** | ❌ **前端策略**，后端管不着 | 后端只被调用，决定不了被调用的频率 |
+
+**这个项目没有前端代码**（Learning 仓库是纯后端，`md/JWT双Token实现设计文档.md` 第七节的"提前 60 秒刷新"是**给前端的建议**，不是已实现的事实）。所以准确的说法是：
+
+> 后端保证的是"**每次 refresh 都重置 TTL**"；**滑动窗口有多长，由前端的刷新频率决定**。
+> - 前端若按设计文档做"提前刷新"（access 30 分钟，每次请求前发现临近过期就刷）→ 活跃用户的间隔约 30 分钟 → 每次把 TTL 推到 7 天后 → **只要连续两次访问的间隔 < 7 天，就永远不会掉线**。
+> - 前端若只做"等 401 再被动刷新"→ 刷新频率取决于用户访问量 → 冷用户仍会在登录 7 天后被踢。
+
+**所以"活跃用户永不下线"是前端频率的函数，不是后端的固有属性。** 后端真正固定下来的是一个**语义选择**：`SET` 传的是 `refreshExpiration` 常量而不是剩余时间 —— 这**明确选了 sliding window 而不是 absolute expiry**。想改成"登录后 7 天铁定过期"，把 TTL 换成 `jwtUtils.getRemainingMillis(claims)`（R1 的剩余有效期）就行 —— 但那样 `refresh` 就没有"续命"作用了，refresh token 会准时失效。
+
+这个语义选择带来的代价：真正需要强制重新认证的场景（改密码、怀疑盗号）**必须显式删掉 `token:refresh:{userId}`**，光等 TTL 等不到。这一点面试官很爱追问。
+
+✅ **"TTL 被重置"已于 2026-09-18 实测证实**：登录后 TTL=604800 → 闲置 4 秒降到 604796 → `POST /auth/refresh` 之后**跳回 604800**。既证明 TTL 确实在倒计时（否则测不出"跳回"），也证明写的不是剩余时间。**滑动窗口从代码推导升级为实测事实。**
+
+**为什么失败不轮换**：校验失败（过期、类型错、Redis 里哈希对不上）时**不签发任何东西、也不改动 Redis**。所以"随便拿个垃圾 token 打 refresh"既拿不到新凭证，也不会把受害者当前的 refresh 顶掉 —— 这正是不把"不匹配"升级成"吊销该用户全部会话"的原因（见下一条的边界讨论）。
+
+**按项目实际行为实测修正（2026-09-18）**：
+- Redis 侧：完全成立 —— 三种失败输入打 `/auth/refresh` 之后，`learning:token:refresh:{userId}` 的 TTL 一秒没变，**确认失败不轮换**；
+- **但 HTTP 层文案错了**：过期 token / 篡改签名的 token / 垃圾字符串，返回的都是 `code=500「服务器开小差了」`，**不是文档设计的 401**。原因是 `TokenServiceImpl.refresh` 里的 `parseToken` 没有 catch `JwtException`，异常一路掉到兜底处理器。**这是真缺陷，记入「JWT 异常要在哪几处 catch」—— 已修复（2026-09-18 晚）并复测通过。**
+
+**并发刷新会怎样**：两个请求同时拿 R1 去刷新。**后写的覆盖先写的**，Redis 里最终只剩一个 R2（假设是 R2b）。但**两个响应都返回 200**，各自带着不同的 token 对；如果前端采用了"输掉"的那个 R2a，下一次刷新就会 401。所以前端**必须做刷新去重**（第一个 401 触发刷新，其余请求挂起等结果复用同一对新 token），否则页面上几个并发请求会互相作废。
+
+**本项目实例**（Learning，2026-09-17）：
+- `service/impl/TokenServiceImpl.java`：`refresh()` 第 60-65 行读 Redis 比对哈希，第 65 行 `return issue(userId, ...)` —— **轮换是复用 `issue()` 顺带完成的**，没有单独的轮换代码路径。这也是"签发逻辑只有一份"的直接收益：轮换不需要额外实现。
+- `issue()` 第 39-40 行用 `set`（不是 `setIfAbsent`）。**如果用 `setIfAbsent`，轮换根本不会发生**（key 已存在则写入失败，R1 永远有效）—— 这是设计文档踩坑清单第 7 条。
+- 实测判据（2026-09-17 已验证）：`refresh(R1)` 成功 → 再用 `R1` → 401（R1 已轮转）；`R2` → 200。
+- **"TTL 被重置"已实测（2026-09-18）**：用原生 TCP 直连 Redis 发 `TTL learning:token:refresh:{userId}`，得到 604800 → 604796（闲置 4 秒）→ refresh 后 **604800**。附带验证：`GET` 出来的值 == `sha256(新 refreshToken)`（64 位十六进制），旧 refresh 复用 → 401。**这是把"滑动窗口"从代码推导变成实测证据的实验，3 分钟可复现。**
+- 附带机制：`JwtUtils.generateToken` 里的 `.setId(UUID.randomUUID())`（jti）是轮换能生效的前提 —— 否则同一秒签发的 R1 和 R2 字节级相同，哈希一样，覆盖后旧 token 照样能用，轮换静默失效。
+
+**面试怎么答**：一句定调 —— "轮换由 `refresh` 成功那一刻触发，作用是**一次性凭证用完即废**，把泄露窗口从 7 天压到下一次续期之前"。然后主动补两个加分点：① **`SET` 时传的是常量 TTL 而不是剩余时间，所以这是个滑动窗口续期** —— 刷新频率越高、登录状态续得越久（说清"频率由前端决定，后端只保证每次刷新重置 TTL"，别说成"每 30 分钟自动续一次"，后端没有那个定时器）；② **并发刷新必须前端去重**，否则多次轮转互相作废、用户莫名掉线。追问方向：刷新失败的三种原因怎么区分（答：正常轮转 / 新设备登录 / 凭证被盗，服务端**无法区分**后两者，所以不能因不匹配就吊销全部会话）、真正的重放检测怎么做（答：记录"已用过的 token 哈希"，收到历史值才判定泄露 —— 但要和并发刷新的宽限期共存，本项目的取舍就是不引入它，用前端去重兜住并发）、session 绝对过期怎么实现（答：TTL 换成该 refresh 的剩余有效期，或另存一个"登录时间"key 做绝对上限）。
+
+---
+
+### JWT 异常要在哪几处 catch
+
+**问题**：`ExpiredJwtException` / `MalformedJwtException` / `SignatureException` 这些 JWT 异常，应该在哪些地方捕获？漏了会怎样？
+
+**答案**：**每一个「调用 `parseToken` 的入口」都必须单独处理，一处都不能少。** JWT 异常是**运行时异常**，没人接就会一路掉到 `@RestControllerAdvice` 的 `catch (Exception)` 兜底分支 → **前端收到 `code=500「服务器开小差了」`**，而不是"你的凭证无效"。
+
+本项目有 **3 个** 调用 `parseToken` 的入口，当前覆盖情况（2026-09-18 实测）：
+
+| # | 入口 | 改法 | 覆盖情况 |
+| --- | --- | --- | --- |
+| 1 | `JwtInterceptor.preHandle`（业务接口） | catch `ExpiredJwtException` / `SignatureException` / `MalformedJwtException` / `JwtException` 四档 → 401 | ✅ 已 catch。实测过期 access token → **401** |
+| 2 | `TokenServiceImpl.refresh` | 只判 `isRefreshToken` + Redis 哈希比对 | ⚠️ **曾经漏 catch**：实测"垃圾串 / 篡改签名 / 已过期"三种 refresh token **全部 → 500**。**已修复**（补三档 catch）并复测：四类畸形输入全部 → **401** ✅ |
+| 3 | `TokenServiceImpl.logout` | `parseQuietly` 里 catch `ExpiredJwtException` 取 `e.getClaims()`，其余 catch 后 `return null` | ✅ 已 catch。实测过期 access token 登出 → **200 且 refresh key 被删** |
+
+**为什么 3 个入口要各写一遍、不能用同一个 catch 兜住**：它们对"失败"的**语义**完全不同 —— 拦截器失败 = 拒绝请求（401），refresh 失败 = 凭证无效（401，让前端跳登录页），logout 失败 = **必须继续成功**（用户的意图是登出，不是证明 token 有效）。同一个异常，三种处理方式，所以只能是三处独立 catch。
+
+**这个缺陷的实际危害**（为什么它不只是"文案难看"）：
+1. **打断前端的自动续期链路**。前端逻辑是"401 → 用 refreshToken 换新的 → 换不到才跳登录页"。refresh 返回 500 既不是 401 也不是 200，前端只能显示"服务异常"，用户被卡在中间态；
+2. **最讽刺的一点**：access token 过期（30 分钟，**必然发生**）触发的 refresh 请求，正好是 refresh 最需要 401 的场景 —— 却返回 500。**这不是边缘 case，是每天每个活跃用户都会走到的正常路径**；
+3. 和缓存降级那套设计对照：`TokenService.refresh` 已经是"失败就拒绝"（安全），但**返回错误的失败信号**，调用方会做出错误动作 —— 与 `isRevoked` 那条"必须返 503 不能返 401"是同一个道理。
+
+**修法**：在 `TokenServiceImpl.refresh` 里给 `parseToken` 加 catch，和拦截器保持一致的 401 语义（`ExpiredJwtException` 与"无效"可以给不同文案，但必须是 401）。**已按此修复。**
+
+**本项目实例**：`interceptor/JwtInterceptor.java`（catch 四档，写法可照搬）、`service/impl/TokenServiceImpl.java` 的 `refresh()`（**曾漏 catch，已按同样三档补上** —— 2026-09-18 复测：垃圾串 / 篡改签名 / 不可解析 payload / 真·已过期，四类全部 → 401）与 `parseQuietly()`（logout 的正确写法）。
+
+**修复后的验收判据（实测过）**：
+
+| 输入 `/auth/refresh` | 修复前 | 修复后 |
+| --- | --- | --- |
+| 合法 refresh token | 200 | **200** ✅ |
+| 垃圾字符串 | 500 | **401** ✅ |
+| 签名被篡改 | 500 | **401** ✅ |
+| payload 不可解析 | 500 | **401** ✅ |
+| **真·已过期**（用项目密钥自签） | 500 | **401**「登录已过期，请重新登陆」✅ |
+| access token（类型不对） | 401 | **401** ✅ 未回归 |
+
+> **怎么造"已过期 but 签名合法"的 token（可复现的测法）**：从用户作用域取 `JWT_SECRET` → 手工拼 header/payload → HMAC-SHA256 签名 → `exp` 设成 60 秒前。这一步能把"过期分支"和"签名错误分支"彻底分开测，比只发垃圾串有价值得多。
+
+
+**面试怎么答**：答"JWT 异常是运行时异常，**每个 `parseToken` 调用点都要独立 catch**，因为失败语义不同：拦截器拒绝请求、refresh 让前端跳登录、logout 必须放行到成功"。然后主动讲这个坑：**access 过期是必然事件，它触发的 refresh 如果返回 500 而不是 401，前端的自动续期链路会直接断掉** —— "我一开始把拦截器写对了，但漏了 service 里那一处，**测试时才暴露：过期 refresh token 返回 500**"。追问方向：为什么不用 `@ExceptionHandler(ExpiredJwtException.class)` 全局兜住（答：可以兜住类型，但兜不住"logout 要装作没发生"这种**行为差异**）、JWT 异常要不要给用户看细节（答：不要，统一"凭证无效/已过期"，避免泄露签名算法与内部结构）。
+
+---
+
+### 认证 ≠ 授权：水平越权和纵向越权
+
+**问题**：接口已经有 JWT 拦截器了，为什么还会"任何登录用户都能删掉别人的账号"？
+
+**答案**：因为 JWT 拦截器只解决了**认证**（Authentication，你是谁），没解决**授权**（Authorization，你能动谁）。**验签通过只证明"这是个合法用户"，不代表他有权操作这个资源。**
+
+授权分两类，**必须用两套不同机制**：
+
+| 越权类型 | 例子 | 资源特征 | 判定机制 | 失败返回 |
+| --- | --- | --- | --- | --- |
+| **水平越权** | A 删 B 的账号/文章/评论 | **有主**（属于某个用户） | **归属校验**：比对资源所有者与当前用户 | 403 |
+| **纵向越权** | 普通用户删分类、拉全站用户列表、把自己提成管理员 | **无主**（全站资产） | **角色校验**：比对角色 | 403 |
+
+**关键点：归属校验解决不了纵向越权** —— 分类、用户列表这种"全站资产"**没有所有者**，你没法比对。反过来，角色校验也解决不了水平越权 —— 两个都是普通用户（`role` 相同），角色判断必然通过。**两者是正交的，缺一不可。**
+
+**实测过的完整漏洞链（Learning，2026-09-18）**：
+
+```
+任意登录用户 -> DELETE /user/{id}      -> 200，删掉任何人（水平越权，缺归属校验）
+任意登录用户 -> GET    /user/list      -> 200，拉走全站用户（纵向越权，缺角色校验）
+任意登录用户 -> DELETE /category/{id}  -> 200，删掉全站分类（纵向越权，缺角色校验）
+```
+
+**危害**：用户 id 是自增的，**从 1 遍历即可删光整张表**；被删用户逻辑删除后接口返回 404、登录返回 400，**受害者察觉不到是"账号被删了"**。
+
+**本项目实例**：`interceptor/JwtInterceptor.java`（认证）+ `annotation/RequireRole.java` + `interceptor/AuthorizationInterceptor.java`（纵向授权）+ `UserServiceImpl.selectUser/delete` 的归属判断（水平授权）。角色用 `role` 字段（0=用户 1=管理员）并**写进 JWT claim**，拦截器直接读，不查库。
+
+**面试怎么答**：先给结论 —— "认证解决'你是谁'，授权解决'你能干什么'，**JWT 只做了前者**"。然后按水平/纵向展开，重点强调**两者机制不同、不能互相替代**（这是最容易答错的点）。主动补一句"我把 role 放进 JWT claim 而不是每请求查库，代价是角色变更最长 30 分钟才生效（access 有效期），用短有效期兜住"。追问方向：为什么归属校验防不住管理员删别人（答：管理员本来就该有权限，所以是**或**关系：「自己 **或** 管理员」）、全站资产的接口怎么办（答：只能靠角色，所以必须引入 role）、为什么不用 Spring Security（答：本项目只手写轻量方案，能讲清原理；生产用 Spring Security 的 `@PreAuthorize`）。
+
+---
+
+### 删除/修改类接口的权限判断写反了会怎样
+
+**问题**：权限判断就是一行 `if`，为什么写成 `!A || !B` 会导致"自己的资料自己看不了"，而测试还发现不了？
+
+**答案**：因为权限判断是**布尔逻辑**，而 `!A || !B` 和 `!A && !B` **只差一个符号**，却表达了**互补**的两种语义 —— 更麻烦的是**写反之后"禁止"的分支往往还是对的**，所以测试很容易通过。
+
+**规则（照着念就不会错）**：
+
+> 我要的是 **`A` 或 `B`**（自己 **或** 管理员）→ 拒绝条件就是 **`!A && !B`**（既不是自己 **也不是** 管理员）
+> 我要的是 **`A` 且 `B`** → 拒绝条件才是 `!A || !B`
+
+**实测踩到的写法（Learning，2026-09-18）**：
+
+```java
+// ❌ 写成 || ：等价于 !(A && B)，要求"必须同时是自己且是管理员"
+if (!Objects.equals(id, userId) || !Objects.equals(role, 1)) {
+    throw new BusinessException(403, "无权操作他人账号");
+}
+
+// ✅ 正确：自己 或 管理员
+if (!Objects.equals(id, userId) && !Objects.equals(role, 1)) {
+    throw new BusinessException(403, "无权操作他人账号");
+}
+```
+
+**为什么测试能漏掉**：写错后两个账号的**部分用例恰好是正确的** ——
+
+| 用例 | 期望 | 错误代码的实际结果 | 看起来 |
+| --- | --- | --- | --- |
+| 普通用户查**别人** | 403 | 403 | ✅ 像是对的 |
+| 普通用户删**别人** | 403 | 403 | ✅ 像是对的 |
+| 普通用户查**自己** | 200 | **403** | ❌ 被漏测 |
+| **管理员**查别人 | 200 | **403** | ❌ 被漏测 |
+| 普通用户删**自己** | 200 | **403** | ❌ 被漏测 |
+
+**结论：权限测试必须"对称地测两个方向"** —— 既测"该拒绝的拒绝了"，也测"**该放行的放行了**"。只测前一半，一个 `||`/`&&` 写反就能骗过整套测试。
+
+**另外一个易混点**：`@RequireRole` 注解和 Service 里的归属校验**不要叠加**。
+`DELETE /user/{id}` 的设计是「自己 **或** 管理员」，所以**不能**在 Controller 上加 `@RequireRole(1)`（那会先按角色拦掉普通用户，Service 里的"删自己"分支永远走不到）。**一个接口的权限规则只在一个地方表达**，否则两处语义冲突时，行为由"谁先执行"决定 —— 极难排查。
+
+**本项目实例**：`service/impl/UserServiceImpl.java` 的 `selectUser` / `delete`（`&&` 写法 + 404 优先于 403 的顺序）、`controller/UserController.java`（`DELETE` 上**不加** `@RequireRole`，权限交给 Service）。
+
+**面试怎么答**：答"权限判断是布尔逻辑，`!A || !B` 和 `!A && !B` 语义互补，**写反了编译和大部分测试都能过**"。然后讲测试方法：**"权限用例必须成对写 —— 该拒的拒、该放的放，特别是'操作自己的资源'和'管理员操作他人资源'这两条，它们正是写反时唯一会失败的用例"**。追问方向：404 和 403 哪个先判（答：先判存在性返 404，再判归属返 403；反了会用 403 掩盖"资源不存在"）、为什么权限规则只在一个地方表达（答：两处叠加时行为取决于执行顺序，无法推理）。
+
+---
+
+### @Valid 漏写 = 所有校验注解静默失效
+
+**问题**：DTO 上 `@NotNull`、`@Min`、`@Max` 都写齐了，为什么越界值还是能写进数据库？
+
+**答案**：因为**约束注解不会自己执行**。它们只是"元数据"，必须由 **`@Valid`（或 `@Validated`）触发 Bean Validation** 才会被检查。`@RequestBody` 参数上漏写 `@Valid`，**所有约束集体失效**，接口照常返回 200。
+
+```java
+// ❌ 注解全白写：请求体不经过校验
+public Result<?> updateRole(@RequestBody UserRoleUpdateDTO dto) { ... }
+
+// ✅ 加上 @Valid 才生效
+public Result<?> updateRole(@Valid @RequestBody UserRoleUpdateDTO dto) { ... }
+```
+
+**⚠️ 这个坑比"注解写错类型"更隐蔽，因为它的表现完全不同**：
+
+| 情况 | 表现 | 特征 |
+| --- | --- | --- |
+| **漏写 `@Valid`** | 越界值**静默通过**，返回 200 | **不报错、日志干净** —— 你以为校验在保护，其实完全没有 |
+| **注解用错类型**（如 `@Size` 标在 `Integer` 上） | 校验器抛 `UnexpectedTypeException` → 掉到兜底 → **500** | **连 `@NotNull` 也一起崩** —— 表现为"该返 400 的返了 500" |
+
+**实测（Learning，2026-09-18，`PUT /user/role`）**：
+
+```
+漏写 @Valid：
+  {id:18, role:9}   -> 200，DB 真的写成 role=9
+  {id:18, role:-1}  -> 200，DB 写成 -1
+  {id:18}           -> 200，DB 写成 NULL（绕过了建表的 NOT NULL DEFAULT 0）
+
+补上 @Valid：
+  {id:18, role:9}   -> 400「权限值只能是 0(降级) 或 1(升级)」，DB 不变 ✅
+  {id:18}           -> 400「权限设定不能为空！」✅
+```
+
+**为什么这个漏洞特别危险（和权限结合时）**：这里的 `role` 决定权限，而权限判断是 `role.intValue() != 1`。所以**能写任意 role 值 = 能造出"非 1 但依然有管理权限"的账号**，同时 DB 里的值还看不出异常。**校验失效 + 字段决定权限 = 权限模型被绕过。**
+
+**怎么快速发现**：写完 DTO 校验后，**主动发一个明确越界的值**（超范围、缺必填、类型不对），看是否被拒。
+- 返回 200 → **`@Valid` 没生效**
+- 返回 500 → **某个注解用错了类型**
+- 返回 400 + 正确文案 → 才是真的在工作
+
+**顺带记一个"看似等价的替代"**：类上加 `@Validated` 只对**方法级/参数级校验**（如 `@PathVariable` 上的 `@Min`）有意义；**`@RequestBody` 的嵌套对象校验仍然需要 `@Valid`**。两者不能互相替代。
+
+**本项目实例**：`controller/UserController.java` —— 同一份文件里 `update`（有 `@Valid`）和 `updateRole`（曾漏写）是正反两个样本；`dto/UserRoleUpdateDTO.java`（`@NotNull` + `@Min(0)` + `@Max(1)`）。
+
+**面试怎么答**：答"`@Valid` 是触发校验的开关，约束注解只是元数据 —— **漏写 `@Valid` 会让整组约束静默失效**，接口不报错、日志也干净，比注解写错类型更难发现（后者至少会 500）"。然后把它和权限场景串起来：**"如果被校验的字段恰好决定权限，校验失效就等于权限模型被绕过"**。追问方向：`@Valid` 和 `@Validated` 的区别（答：`@Validated` 是 Spring 的，支持**分组校验**和类级方法校验；`@Valid` 是标准 Bean Validation，支持嵌套对象级联 `@Valid`）、嵌套对象为什么有时不校验（答：内层字段需要在内层字段上加 `@Valid` 才能级联）、分组校验怎么用（答：`@Validated(Create.class)` + 注解上的 `groups`，用于"新增要校验 id 为空、修改要校验 id 非空"这类场景）。
+
+---
+
+### Redis 六处依赖的降级方向与超时代价
+
+**问题**：项目里同一个 Redis 被用在缓存、限流、令牌黑名单、refresh key 上。"Redis 挂了怎么办"是**一个**问题还是**六个**问题？把它们都设计成 fail-closed 就安全了吗？
+
+**答案**：是**六个**问题。同一个 Redis 有**两种方向、三种操作语义**。而且真正的杀手不是方向选错，而是**超时**。
+
+**本项目实测数据**（把 `spring.redis.port` 改成 9999 制造不可达，逐一打接口）：
+
+| # | Redis 操作 | 层次 | 方向 | 实测结果 | 耗时 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 缓存（detail/views/lock） | 性能 | **fail-open** | 回源查 DB，接口正常 | — |
+| 2 | 限流（滑动窗口） | 性能 | **fail-open** | 连打 7 次全 200（无 429、无 500） | — |
+| 3 | 黑名单**读**（`isRevoked`） | 安全 | **fail-closed** | 503「认证服务暂时不可用」 | 2052ms |
+| 4 | 黑名单**写**（logout） | 安全 | **fail-closed** | 503 | 4038ms |
+| 5 | refresh key **写**（issue/登录） | 认证 | **fail-closed** | 503「服务暂时不可用」 | 5060ms |
+| 6 | refresh key **读**（refresh） | 认证 | **fail-closed** | 503 | 4037ms |
+| 7 | refresh key **删**（logout） | 认证 | **fail-open** | 记日志，登出照常返回 | — |
+
+**⭐ 判别规律（比"性能层/安全层"更细一层）**：
+
+```
+安全 / 认证相关的"读"和"写"  → fail-closed（读不到、写不进都不该声称成功）
+安全 / 认证相关的"删"        → 可以 fail-open（删不掉不产生错误的成功语义）
+纯性能层（缓存 / 限流）      → 一律 fail-open
+```
+
+**最能说明问题的是第 4 条 vs 第 7 条**：同一个 `logout` 方法里，**删 refresh key 失败可以放行，写黑名单失败必须拒绝** ——
+- 删失败：access token 已经进黑名单了，双重保险还剩一层，登出目的基本达到；
+- 写失败：**等于 access token 没被作废**。此时若返 200，用户以为"退了"，实际那个 token 在剩余 30 分钟里**仍然完全有效** —— 安全控制静默失效。
+
+**⭐⭐ 真正值钱的一条：超时时间决定故障时的"伤害半径"。**
+
+实测每次失败的 Redis 往返 ≈ **2 秒**（配的 `spring.redis.timeout: 3000ms`）：
+
+```
+不碰 Redis 的路径（无 token 直接 401）     25 ms   ← 快速拒绝
+读一次 Redis 失败                        2052 ms
+删 + 写各失败一次（logout）               4038 ms
+限流 + 写 refresh 各失败一次（login）      5060 ms
+```
+
+**一次请求里可能撞多次超时**（登录要过限流 + 写 refresh → 5 秒）。
+
+> **所以 fail-closed 的代价不只是"拒绝请求"，而是"每个请求都等满超时"。** 生产上 `spring.redis.timeout` 必须设短（几百毫秒级），否则 Redis 抖动期间所有接口被拖慢 2~5 秒 → Tomcat 线程被占住 → 连接池耗尽 → **从"部分功能不可用"升级为"整站雪崩"**。
+>
+> 一句话：**降级策略决定可用性，超时时间决定故障时的伤害半径。**
+
+**本项目实例**：`ArticleServiceImpl`（9 个 `cacheXxx` 封装，全 fail-open）、`RateLimitInterceptor`（`catch (Exception)` → `return true`）、`TokenServiceImpl`（`issue`/`refresh` 抛 503；`logout` 的删 key fail-open、写黑名单 fail-closed）。
+
+**面试怎么答**：先说"'Redis 挂了怎么办'不是一个问题" —— **同一个中间件在不同用途上方向可以完全相反**，再给判别规律：性能层一律放行；安全/认证层的读和写要拒绝，但**删除类操作可以放行**（对比 `logout` 里"删 refresh key"与"写黑名单"两种处理）。最后补超时这条：**"fail-closed 必须配短超时，否则 Redis 抖动会把整个服务拖死 —— 降级策略决定可用性，超时决定伤害半径。"** 追问方向：超时设多少（答：看 P99，一般几百毫秒，要比接口总超时小得多）、要不要加重试（答：谨慎，重试会放大超时，只有幂等操作才适合重试）、Redis 高可用怎么做（答：哨兵/集群 + 客户端拓扑发现）。
 
 ---
 
