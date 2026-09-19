@@ -1,0 +1,99 @@
+import org.junit.platform.engine.discovery.DiscoverySelectors;
+import org.junit.platform.launcher.Launcher;
+import org.junit.platform.launcher.LauncherDiscoveryRequest;
+import org.junit.platform.launcher.core.LauncherFactory;
+import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
+import org.junit.platform.launcher.listeners.TestExecutionSummary;
+
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder.request;
+
+/**
+ * 无 Maven 环境下的 JUnit 5 运行器。
+ *
+ * <p>用法：
+ * <pre>
+ *   java -cp "&lt;argfile&gt;" TestRunner                        # 跑 com.jiangpa 包下全部
+ *   java -cp "&lt;argfile&gt;" TestRunner com.a.B com.c.D        # 只跑指定测试类
+ * </pre>
+ *
+ * <p>多个类时逐个执行并分别汇总 —— 这样「纯单元测试」和「需要 Spring 上下文的集成测试」
+ * 的结果不会混在一起（后者依赖外部环境，失败往往与代码无关）。
+ */
+public class TestRunner {
+
+    public static void main(String[] args) {
+        forceUtf8();
+
+        boolean byClass = args.length > 0;
+        List<String> targets = new ArrayList<>();
+        if (byClass) {
+            for (String a : args) targets.add(a);
+        } else {
+            targets.add("com.jiangpa");
+        }
+
+        int totalFound = 0, totalOk = 0, totalFailed = 0;
+        List<String> failedNames = new ArrayList<>();
+
+        for (String target : targets) {
+            LauncherDiscoveryRequest req = (target.contains(".") && Character.isUpperCase(target.charAt(target.lastIndexOf('.') + 1)))
+                    ? request().selectors(DiscoverySelectors.selectClass(target)).build()
+                    : request().selectors(DiscoverySelectors.selectPackage(target)).build();
+
+            Launcher launcher = LauncherFactory.create();
+            SummaryGeneratingListener listener = new SummaryGeneratingListener();
+            launcher.execute(req, listener);
+            TestExecutionSummary s = listener.getSummary();
+
+            totalFound += (int) s.getTestsFoundCount();
+            totalOk += (int) s.getTestsSucceededCount();
+            totalFailed += (int) s.getTestsFailedCount();
+
+            String label = target;
+            String mark = s.getTestsFailedCount() == 0 ? "PASS" : "FAIL";
+            System.out.printf("  [%s] %-52s %d/%d%n", mark, label,
+                    s.getTestsSucceededCount(), s.getTestsFoundCount());
+
+            s.getFailures().forEach(f -> {
+                failedNames.add(f.getTestIdentifier().getDisplayName());
+                System.out.println("         └─ FAILED: " + f.getTestIdentifier().getDisplayName());
+                Throwable t = f.getException();
+                // 只打异常类型和第一行消息，完整堆栈太长
+                String msg = t == null ? "(no exception)" : t.getClass().getSimpleName()
+                        + (t.getMessage() == null ? "" : ": " + firstLine(t.getMessage()));
+                System.out.println("            " + msg);
+            });
+        }
+
+        System.out.println();
+        System.out.println("==================== TOTAL ====================");
+        System.out.println("  tests found     : " + totalFound);
+        System.out.println("  tests succeeded : " + totalOk);
+        System.out.println("  tests failed    : " + totalFailed);
+        if (!failedNames.isEmpty()) {
+            System.out.println("  failed cases    : " + failedNames);
+        }
+        System.out.println("===============================================");
+
+        System.exit(totalFailed > 0 ? 1 : 0);
+    }
+
+    private static String firstLine(String s) {
+        int i = s.indexOf('\n');
+        String line = i < 0 ? s : s.substring(0, i);
+        return line.length() > 160 ? line.substring(0, 160) + "..." : line;
+    }
+
+    private static void forceUtf8() {
+        try {
+            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8.name()));
+            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8.name()));
+        } catch (Exception ignored) {
+        }
+    }
+}
