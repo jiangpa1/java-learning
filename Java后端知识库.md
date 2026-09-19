@@ -70,6 +70,7 @@
 - [Redis 六处依赖的降级方向与超时代价](#redis-六处依赖的降级方向与超时代价)
 - [JWT 登录与鉴权的完整链路](#jwt-登录与鉴权的完整链路)
 - [refresh token 什么时候轮换](#refresh-token-什么时候轮换)
+- [refreshToken 被盗的危害与防护](#refreshtoken-被盗的危害与防护)
 - [JWT 异常要在哪几处 catch](#jwt-异常要在哪几处-catch)
 
 **认证与授权**
@@ -764,7 +765,7 @@ redis-cli INFO memory | grep used_memory_human       # 整体
 - **TIME_WAIT 只出现在主动关闭方。** 被动关闭方进入的是 `CLOSE_WAIT`，它的常见原因是**代码里忘了 `close()`**（连接一直不释放），会导致句柄耗尽。
 - **TIME_WAIT 过多怎么处理？** 先分清是"正常的主动关闭方多"还是"被攻击"。手段有 `SO_REUSEADDR`、调小 `net.ipv4.tcp_fin_timeout`、`tcp_tw_reuse` 等。**但不要用 `tcp_tw_recycle`** —— 它在 NAT 环境下会丢包，已被 Linux 移除。
 
-**本项目实例**：Learning 项目跑在 8080，客户端/浏览器访问时由**服务端主动关闭**还是客户端主动关闭，取决于哪边先发 `FIN`。连接池（HikariCP / Lettuce）复用长连接，本身就大幅减少了 `TIME_WAIT` 的产生。
+**本项目实例**：Learning 项目跑在 8081，客户端/浏览器访问时由**服务端主动关闭**还是客户端主动关闭，取决于哪边先发 `FIN`。连接池（HikariCP / Lettuce）复用长连接，本身就大幅减少了 `TIME_WAIT` 的产生。
 
 **面试怎么答**：答两个原因 —— **① 保证最后的 ACK 能到达，让对端正常关闭；② 让旧连接的延迟报文消散，避免污染同四元组的新连接。** 追问方向：`CLOSE_WAIT` 和 `TIME_WAIT` 的区别（答：前者是被动关闭方、通常是代码没 close 导致的泄漏；后者是主动关闭方的正常状态）、`TIME_WAIT` 过多怎么办（答：`tcp_tw_reuse` / 调短超时，**绝不能用已废弃的 `tcp_tw_recycle`**）。
 
@@ -1401,6 +1402,61 @@ refresh（长，7 天）    → 存 Redis、可删、可轮转，是"真正可�
 3. **`Secure` Cookie 属性**只在 HTTPS 下才发送 → 生产必须上 HTTPS，否则"防中间人"这一层是空的。
 
 **面试怎么答**：一句话定调 —— **"HTTPS = HTTP + TLS，用非对称协商出对称密钥，之后全程对称加密；证书的作用不是加密而是防中间人。"** 然后按"为什么混合加密 → 证书链怎么验 → TLS 1.3 改了什么"三段展开。追问方向：为什么证书能防中间人（答：CA 用私钥签名，中间人伪造不出有效签名）、根证书为什么可信（答：操作系统/浏览器预装的信任锚，是信任的起点而非数学证明）、HTTPS 能不能防重放（答：TLS 有 sequence number 和 nonce，但应用层仍要自己做幂等/防重放）。
+
+---
+
+### refreshToken 被盗的危害与防护
+
+**问题**：`accessToken` 和 `refreshToken` 哪个被偷了更危险？拿到 `refreshToken` 的攻击者能做到什么程度？
+
+**答案**：**一定是 refreshToken —— access token 是"会到期的门票"，refresh token 是"能反复换门票的会员卡"。**
+
+| | 偷到 accessToken | 偷到 refreshToken |
+|---|---|---|
+| 能冒用多久 | **≤30 分钟**，到点自然死 | **只要持续刷新就永不过期** |
+| 能自我续命吗 | ❌ 不能 | ✅ 每刷一次换一对新的 |
+| 服务端能撤销吗 | ❌ 无状态，只能等过期或进黑名单 | ✅ **删 Redis key 即可** |
+| 攻击者的意愿 | 低（收益只有 30 分钟） | **高（这是长期冒充凭证）** |
+
+**★ 为什么是"永不过期"而不是 7 天**：refresh token 自身确实只有 7 天 `exp`，但**每次刷新都签发一个新的 7 天 token**，且 `issue()` 把 Redis TTL 也重置为满 7 天（滑动窗口）。所以攻击者只要**每 7 天刷一次**，就能无限期存活 —— **7 天这个限制只作用于"单个 token"，不作用于"会话"**。
+
+**拿到之后能干什么**（按危害递增）：
+
+1. **立即换出可用凭证**：`POST /auth/refresh` → 返回带该用户 `userId` / `username` / **`role`** 的 accessToken，受害人能干的它全能干；
+2. **⚠️ 若受害人是管理员 → 可以装持久化后门**：`PUT /user/role` **只挡"降级最后一个管理员"，不挡提权**。攻击者可以自己注册一个账号（注册接口硬编码 `role=0`）→ 用偷来的管理员凭证把它提成管理员 → **此后即使受害人改了密码，攻击者那个账号仍然是管理员**。这是"偷 token"升级成"持久化控制"的路径；
+3. **可以删掉受害人账号，且用户名永久不可复用**：`DELETE /user/{id}` 传自己的 id 即自删；逻辑删除后 `uk_user_name` 仍覆盖物理行（见「逻辑删除 + 唯一索引」）→ **受害人连用原用户名重新注册都不行**；
+4. **但改不了密码**：`updatePassword` 要求 `passwordEncoder.matches(oldPassword, ...)` —— **必须知道旧密码**。所以账号不会被夺走，只能被**冒充**。这是一条很重要的安全底线。
+
+**已有的三层防护**（按"能不能真的挡住"排序）：
+
+| 防护 | 作用 | 真实强度 |
+|---|---|---|
+| **Redis 只存 `sha256(token)`** | Redis 脱库也拿不到能用的 token | 强（纵深防御） |
+| **改密码 → 删 `token:refresh:{userId}`** | 立刻断掉续期能力 | 强（**这才是正确的止血手段**） |
+| **轮转（用过即废）** | 旧 token 失效 | ⚠️ **只是绊索，不是防线** |
+
+**为什么轮转不算防线**：它的真实效果是**撞车** —— 攻击者用过之后，合法用户下次续期会失败。但：
+- 接口只回 `401「登录已失效，请重新登陆」`，**没有区分"被别人用过"和"只是个过期旧 token"** → **"发现被盗"这个信号被丢掉了**，用户只会以为是自己登录过期，重新登录一下就过去了；
+- 行业做法（OAuth 2.0 Security BCP）是**重放检测**：记录"已用过的 token 哈希"，一旦收到历史值就判定失窃 → **撤销该用户全部凭证 + 告警**。本项目有意不做（要和并发刷新的宽限期共存），用前端刷新去重兜住并发 —— 这是取舍，要能说出口。
+
+**本项目实例**（Learning，2026-09-19 审计；**以下为代码推导，未做真实盗用演练**）：
+
+- `service/impl/TokenServiceImpl.java:43-44`：`SET learning:token:refresh:{userId} = sha256(refreshToken)`，TTL 传的是 `refreshExpiration` **常量**（不是剩余时间）—— 既是不存原值的依据，也是"滑动续期让攻击者免死"的依据；
+- `service/impl/UserServiceImpl.java:165`：`updatePassword` 末尾删 refresh key（**止血点**）；
+- `service/impl/UserServiceImpl.java:221`：`updateRole` 删 refresh key，位置在守卫**之后**且**无条件执行**（早期写进 `if` 里导致"降级形同虚设"，已修）；
+- `service/impl/UserServiceImpl.java:144`：`passwordEncoder.matches(oldPassword, ...)` → 改密码必须知道旧密码；
+- `service/impl/UserServiceImpl.java:211-217`：守卫是按"**目标当前是不是管理员**"判的，不是按"**这次是不是降级**"判的 → **提权完全不受限**（附带一个小副作用：把最后一个管理员再设成管理员，会被误拒为"无法降级最后一位管理员"）；
+- key 设计 `token:refresh:{userId}` = **一个用户一条会话** → 副作用：**受害人只要重新登录一次，攻击者的 refresh token 立刻被覆盖失效**（拉锯战）。这是单端登录的安全红利，代价是不能多设备。
+
+**⚠️ 三个真实风险点**（按紧迫度）：
+
+1. **HTTP 明文传输** —— 本机无所谓，**一旦部署到公网还用 HTTP，refresh token 就是明文在网络上跑**，同 WiFi / 中间节点 / 代理都能拿走。**上 HTTPS 是部署的前置条件，不是可选项**；
+2. **前端存哪** —— `localStorage` 会被**任何 XSS** 一行 `getItem` 拿走，而 refresh token 是长期凭证、收益被放大。建议 access 放内存/localStorage、**refresh 走 `httpOnly` Cookie**（代价：后端要改成 `Set-Cookie`，且要自己做 CSRF / `SameSite`）；
+3. **日志泄露（本项目 2026-09-19 已修好，但习惯要留住）** —— `@Data` 生成的 `toString()` 会**把字段值原样打出来**，所以凡是有密码 / token 字段的类都必须加 `@ToString.Exclude`；否则哪天有人写一句 `log.info("登录参数 {}", dto)`、或异常信息里带了对象（MyBatis 的 `StdOutImpl` 本来就在打参数），密钥就直接进日志。
+   **本项目现状（6 个类已全部加上）**：`dto/RefreshDTO.refreshToken`、`dto/UserLoginDTO.password`（**明文原密码，最该防**）、`dto/UserRegisterDTO.password`、`dto/UpdatePasswordDTO`（`oldPassword` / `newPassword` / `confirmNewPassword`）、`pojo/User.password`（BCrypt 哈希）、`vo/TokenPair`（`accessToken` / `refreshToken`）。
+   ⚠️ **判据**：新增任何带敏感字段的 DTO / VO / 实体时，先问一句"它会不会被 log 或进异常信息"，会就补注解。
+
+**面试怎么答**：一句话定调 —— **"该重点保护的是 refresh token 而不是 access token：access 无状态、被偷最多冒用 30 分钟；refresh 能自我续期，是长期冒充凭证。"** 然后按"能干什么 → 已有防护 → 还剩什么风险"三段展开。主动亮两个加分点：① **Redis 只存哈希**，脱库拿不到可用 token；② **改密码 = 删 refresh key**，这是被盗后的正确止血动作 —— 但**残留的 access token 还有 ≤30 分钟**，且**已经发生的提权不会被撤销**，所以管理员凭证外泄还要审计角色变更。追问方向：轮转能防住吗（答：只能"撞车"暴露、不是防线，要做重放检测/凭证家族撤销）、为什么不直接用 Session（答：Session 每请求查库，双 token 把查询压到 30 分钟一次）、怎么发现被盗（答：重放检测 + 把"莫名被踢下线"上报）、管理员凭证泄露的正确处置（答：改密码**不够** —— 要撤销全部会话 + 审计 `PUT /user/role` 的调用 + 排查被提权的账号）。
 
 ---
 
