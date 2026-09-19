@@ -1,101 +1,167 @@
-# HANDOFF — Java 后端实习辅导项目交接文档
+# HANDOFF — Java 后端实习辅导 · 任务交接
 
-> 写给接手这个辅导任务的下一个会话。读完这份文档 + 两个记忆文件即可无缝继续。
+> 最后更新：**2026-09-19**
+> 这份文件管的是**辅导任务本身**（用户状态、协作方式、两个仓库怎么分工、下一步）。
+> **项目本身的技术细节请看另一个仓库的 `LearningHANDOFF.md`**（见下方"两个仓库别搞混"）。
+>
+> ⚠️ **本文件 2026-09-19 全面重写过**。上一版写于 09-15，里面「项目在 `Desktop\java` 下」「category/comment 未做」「Redis 未接入」「逻辑删除未做」等**全部已过时**，不要沿用旧印象。
 
 ---
 
 ## 一、用户与目标
 
-- **用户身份**：计算机系大三学生（2026 年秋季升大三），中文交流。
-- **目标**：2026 年 12 月投递简历，2026-2027 寒假拿到 Java 后端实习 Offer。
-- **时间线**：今天是 2026-09-15，距离投递还有约 3 个月。
-
-## 二、学习进度（截至 2026-09-13）
-
-**已完成：**
-- Java 基础：集合、泛型、反射、注解、异常、IO 流
-- 多线程：创建方式、synchronized、Lock、线程池、volatile、CAS
-- JVM：内存结构、GC、类加载
-- MySQL：索引、事务、MVCC、锁、主从复制、分库分表（10 天系统学完）
-- Redis：五种数据结构、缓存三问题、持久化、分布式锁、淘汰策略、高可用（7 天学完）
-- Spring Boot：IOC/DI、AOP、自动配置、Spring MVC、统一响应、参数校验、全局异常、JWT 登录认证（5 天学完）
-- LeetCode：约 20+ 题
-
-**进行中：**
-- Spring Boot 项目实战「Learning」博客系统（2026-09-11 起）
-
-**待学：**
-- 计算机网络（面试高频，未系统学）
-- 项目实战继续（category/comment 模块、Redis 缓存接入）
-- 简历 + 八股文（11 月起）
-
-## 三、当前项目「Learning」
-
-**位置**：`C:\Users\ASUS\Desktop\java` 下（实际项目目录以用户为准，可能是子目录）
-
-**技术栈**：
-- Spring Boot 2.7.18 + MyBatis-Plus 3.5.5 + MySQL + JDK 17
-- jjwt（JWT）、spring-security-crypto（仅 BCrypt，未用完整 security starter）
-
-**包结构**：`com.jiangpa.{common, config, controller, dto, exception, interceptor, properties, service, service.impl, mapper, pojo, vo}`
-
-**已完成功能：**
-- 用户模块：`tb_user` 表，增删改查 5 接口、`/auth/register`、`/auth/login`
-- 文章模块：`tb_article` 表，详情 / 分页列表 / 发布 / 修改 / 删除五接口
-- `Result<T>` 统一响应、JWT 工具类 + `JwtInterceptor` + `WebMvcConfig`（排除 `/auth/**`、`/error`）
-- BCrypt 密码加密、`GlobalExceptionHandler` + `BusinessException`、`MybatisPlusConfig` 分页插件
-
-**文章模块的技术亮点（面试可讲）：**
-- 列表用 `wrapper.select()` 只查轻量列
-- 跨表用 `selectBatchIds` 批量查作者昵称，避免 N+1 查询
-- `view_count` 用 `setSql("view_count = view_count + 1")` 自增
-- 更新用 `LambdaUpdateWrapper` 显式指定列，避免覆盖 create_time 和 view_count
-- 改删校验作者身份，非本人返回 403
-
-**未完成 / 待办：**
-- 用户模块列表未分页
-- `HttpMessageNotReadableException` / `HttpMediaTypeNotSupportedException` 未单独处理（会掉到兜底返 500）
-- category / comment 模块接口（表已建，接口未做）
-- 逻辑删除未做
-- Redis 缓存尚未接入项目
-
-**架构约定（必须遵守）：**
-- HTTP 状态码一律返 200，业务状态放在响应体 `code` 字段里
-- 不建物理外键，靠索引 + 应用层保证
-- Service 层抛异常，不返回 Result；异常统一由 GlobalExceptionHandler 处理
-
-**已产出文档**（在项目根目录）：
-`用户模块接口文档.md`、`JWT鉴权拦截器文档.md`、`全局异常处理器文档.md`、`Postman接口测试文档.md`、`文章模块接口文档.md`、`文章模块Postman测试文档.md`
-
-## 四、已知易踩的坑
-
-- Spring Boot 2.7.8 起 MySQL 驱动坐标是 `com.mysql:mysql-connector-j`（旧坐标省略版本号会报 missing version）
-- Spring Boot 2.7 必须用 `javax.servlet`，不是 `jakarta.servlet`
-- jjwt 的 `SignatureException` 用 `io.jsonwebtoken.security` 包下那个
-- HS256 密钥至少 32 字节
-
-## 五、协作偏好（重要）
-
-**排查问题后，先给「哪里错了 + 为什么错」的清单，让用户自己改；他做不下去或明确说"你帮我改"时，再代改。**
-
-- 原因：他在学 Java 找实习，动手改本身就是学习。
-- 代改时保留他原有代码风格和注释习惯。
-- 日常交流用中文，回答要具体、可操作。
-
-## 六、每日节奏
-
-用户习惯每天早上问"今天学什么"，据此给当天的学习计划（上午 + 算法 + 下午 + 晚上 + git commit 信息），并让他更新 README 每日记录表 + 提交 GitHub（仓库 `jiangpa1/java-learning`）。
-
-## 七、下一步建议（2026-09-15 起）
-
-1. 继续项目实战：category / comment 模块 → 接入 Redis 缓存（热门文章、浏览数）
-2. 项目告一段落后，补计算机网络（TCP/HTTP/HTTPS，面试高频）
-3. 10 月底前完成第二个项目或完善现有项目
-4. 11 月启动简历 + JavaGuide 八股文系统刷题
-5. 12 月海投简历 + 面试
+| 项 | 内容 |
+| --- | --- |
+| 身份 | 计算机科学与技术，2026 年秋季升大三，**全程中文交流** |
+| 目标 | **2026-12 投递简历**，2027 寒假拿到 Java 后端实习 Offer |
+| 方向 | Java 后端（Spring Boot 生态） |
+| 当前日期 | 2026-09-19（距投递约 **2.5 个月**） |
 
 ---
 
-**记忆文件位置**（已存在，继续维护即可）：
-- `user-profile.md`：用户画像 + 学习进度 + 项目详细状态
-- `feedback-editing-style.md`：协作偏好
+## 二、学习进度
+
+### 已完成
+
+| 主题 | 内容 |
+| --- | --- |
+| Java 基础 | 集合、泛型、反射、注解、异常、IO 流、Stream |
+| 多线程 | 创建方式、`synchronized`、`Lock`、线程池、`volatile`、CAS |
+| JVM | 内存结构、GC、类加载 |
+| MySQL | 索引、事务、MVCC、锁、主从复制、分库分表、EXPLAIN 调优 |
+| Redis | 五数据结构、缓存三问题、持久化、分布式锁、淘汰策略、高可用 |
+| Spring Boot | IOC/DI、AOP、自动配置、Spring MVC、统一响应、参数校验、全局异常、**JWT 双 Token** |
+| 计算机网络 | TCP 三次握手四次挥手、TIME_WAIT、**HTTP 基础/状态码/缓存/Cookie-Session**、**HTTPS 握手与证书链**（2026-09-16～19 补齐） |
+| 项目实战 | **Learning 博客系统**：22 个接口 + 51 个单元测试（见第三节） |
+| LeetCode | 约 **40+ 题**（每天 1-2 题，跟当天主题搭配） |
+
+### 还没系统学的（面试前必须补）
+
+1. **操作系统** —— 学习路线第二阶段最后一块（进程/线程、内存管理、IO 模型）
+2. **网络收口**：把「**从输入 URL 到页面展示**」串成一条链（DNS → TCP → TLS → HTTP），这是面试综合题
+3. **八股文系统刷题**（11 月起用 JavaGuide）
+4. **简历**（11 月起）
+
+---
+
+## 三、两个仓库别搞混 ⭐
+
+这是接手时最容易错的一点：
+
+| 仓库 | 本地目录 | 装什么 |
+| --- | --- | --- |
+| **`jiangpa1/Learning`** | `C:\Users\ASUS\Desktop\**Learning**` | **博客项目本体**：`src/main/java` 代码、`md/` 下的设计文档与接口文档、根目录 `LearningHANDOFF.md` |
+| **`jiangpa1/java-learning`** | `C:\Users\ASUS\Desktop\**java**` | **笔记与练习**：`day1…dayN/` 每日练习、`Java后端知识库.md`、`README.md`（每日记录表）、本文件 |
+
+**⚠️ 病根**：`Desktop\java` 是**每日练习归档目录，真实项目不在这里**。上一版交接文档就是把这俩搞混了，才写出"项目在 `Desktop\java` 下"。
+
+两者都 push 到 GitHub，**都是 public** —— 提交前必须扫一遍有没有口令/密钥。
+
+---
+
+## 四、项目状态（只给结论，细节看 `LearningHANDOFF.md`）
+
+**位置**：`C:\Users\ASUS\Desktop\Learning`（**不在 `Desktop\java` 里**）
+
+**一句话**：22 个接口的博客后端，除 CRUD 外还有四层横切能力 + 51 个单元测试。
+
+| 能力 | 状态 |
+| --- | --- |
+| 用户 / 认证 | ✅ 注册、登录（**双 Token**）、续期轮转、登出、改昵称、**改密码**、改角色、逻辑删除 |
+| 文章 / 分类 / 评论 | ✅ 全部接口，含归属校验 403、N+1 优化、缓存 |
+| **逻辑删除** | ✅ 四表 `@TableLogic` |
+| **角色权限** | ✅ `@RequireRole` + 授权拦截器（水平/纵向越权分开处理） |
+| **接口限流** | ✅ 滑动窗口 + Lua，拦截器顺序 JWT→授权→限流 |
+| **降级策略** | ✅ 六处 Redis 依赖、两种方向，**全部实测** |
+| **单元测试** | ✅ 51 个（JUnit 5 + Mockito），IDEA 里跑全绿 |
+| 接口文档 | ✅ `Learning/md/` 下 12 份，与代码一致 |
+
+**待办**（详见 `LearningHANDOFF.md` 第八节）：
+1. 文档一致性收尾（`文章模块接口文档.md` 表名是早期稿无 `tb_` 前缀；各文档版本号不统一）
+2. **Docker 部署**（简历差异点）
+3. 继续铺单测（优先 `UserServiceImpl` 的权限判断 —— `!A || !B` 写反时大部分用例还是绿的，最该有测试）
+4. 低优先：统一提示语、魔法数字提取常量
+
+**已知取舍（不是缺陷，别再当 bug 修）**：列表页浏览量滞后、逻辑删除后名字不可复用、评论不级联、限流阈值是演示值、管理员可自降（有守卫）。
+
+---
+
+## 五、协作偏好（重要）
+
+**排查问题后，先给「哪里错了 + 为什么错」的清单，让他自己改**；他明确说"你帮我改"或连续卡住时才代改。
+
+- **原因**：他在学 Java 找实习，**动手调试和踩坑本身就是学习**；直接交付成品会把最有价值的环节拿走，面试时也讲不出来。
+- 代改时保留他原有风格：构造器注入、`Result` 包装、`LambdaQueryWrapper`、中文注释。
+- 给清单时**顺手写全验收判据** —— 他改完的标准动作是「**你验证一下**」（高频指令）。
+- 优先问设计取舍（如「删除分类时关联文章怎么办」），而不是直接给答案。
+- 日常交流用中文，回答要**具体、可操作**。
+
+**其他习惯**：
+- 喜欢把设计写成 markdown，认可「**先写设计 → 实现 → 把实测结果和踩坑回填到实现记录**」这个流程。
+- 他把**每天的学习主题也写成笔记**（`dayNN/主题.md`），知识库条目应基于笔记提炼 + 挂项目实例，不要照抄。
+- 收尾时更新 `README.md` 每日记录表，然后**两个仓库分别 commit + push**。
+
+---
+
+## 六、每日节奏
+
+他习惯早上问「**今天学什么**」。给计划时：
+
+1. **按剩余时间排** —— 常在上午已过或下午才问，别硬凑上午。
+2. **说清今天的主线**（学新知识 / 项目实战 / 收尾），不要为凑时间塞满。
+3. 框架是「上午学新 → 算法 1h → 下午项目 → 晚上补漏」，**但实际执行常超时**（9-18、9-19 都做到 19:00 以后）。
+4. 计划末尾给 **README 记录行 + 两个仓库的 commit message**。
+
+---
+
+## 七、下一步建议（2026-09-20 起）
+
+**项目侧**：
+1. 文档一致性收尾（半天）
+2. **Docker 部署**（1 天）—— 简历差异点，也能把"环境变量/密钥怎么传进容器"讲清
+3. 继续铺单元测试（优先权限判断 + 缓存降级）
+
+**知识侧**：
+4. 上午补「**从输入 URL 到页面展示**」—— 把 DNS→TCP→TLS→HTTP 串成一条链，收口这几天的网络学习
+5. **操作系统**（进程/线程、内存管理、IO 模型）
+6. 11 月启动简历 + JavaGuide 八股文；12 月海投
+7. 10 月底前决定**第二个项目**（当前只有 Learning 一个主力项目）
+
+---
+
+## 八、环境与工具（踩过的坑，省时间）
+
+| 项 | 情况 |
+| --- | --- |
+| MySQL / Redis | 虚拟机 `192.168.133.128`，库名 `learning`；**虚拟机经常关机，动手前先确认连得上** |
+| 凭据 | 在 `Learning/src/main/resources/application-local.yml`（已 gitignore，**不要写进记忆或文档**） |
+| 应用 | **默认不启动**，要验证时在 IDEA 里跑（端口 8080） |
+| Maven | **项目没有 `mvnw`，`mvn` 也不在 PATH** —— 命令行编译/跑测试要自己拼 classpath |
+| 回归脚本 | `Desktop\java\day42-*.ps1` / `day43-*.ps1`；**口令已改为读环境变量 `LEARNING_DB_PASS`**，另需用户作用域的 `JWT_SECRET` |
+| **手工 classpath 的陷阱** | **不能"递归收集 `.m2` 全部 jar"** —— 本地仓库里有多个版本（MyBatis-Plus 3.4.3/3.5.5、Tomcat 9.0.46/9.0.83、commons-pool2 只有 2.8.1 与 lettuce 6.1.10 不兼容），会覆盖成旧版本导致**误报编译失败**。用"同 artifact 取最高版本"可规避大部分 |
+| PowerShell 5.1 | **写验证脚本用纯 ASCII 输出**（含中文的 `.ps1` 被按 GBK 读会解析失败）；URL 里的 `&` 在单引号字符串里也被拦（用 `[char]38` 拼）；`$P`/`$host` 是保留变量别当计数器；写文件用 `[System.IO.File]::WriteAllText(..., UTF8Encoding($false))`（`Set-Content -Encoding UTF8` 会带 BOM） |
+| git commit | **用 `git commit -F 文件`**，不要 `-m $var` —— 消息里的 `` ` ``/`+`/`"` 会被 git 当成 pathspec，**提交静默失败** |
+
+---
+
+## 九、记忆文件位置（继续维护即可）
+
+`C:\Users\ASUS\.claude\projects\C--Users-ASUS-Desktop-java\memory\`
+
+| 文件 | 内容 | 上次更新 |
+| --- | --- | --- |
+| `MEMORY.md` | 索引 | 2026-09-19 |
+| `user-profile.md` | 用户画像 + 节奏 + 仓库 | 2026-09-19 |
+| `feedback-editing-style.md` | 协作偏好 + **验证方法 7 条** | 2026-09-19 |
+| `feedback-knowledge-base.md` | 知识库维护约定（**条目追加在末尾 + 同步目录**） | 2026-09-19 |
+| `project-learning-blog.md` | Learning 项目状态速查（细节指向 `LearningHANDOFF.md`） | 2026-09-19 |
+| `project-hainan-mahjong.md` | 海南麻将第二项目 | 2026-09-17 |
+
+---
+
+## 十、接手动作清单
+
+1. 读本文件 + `Learning/LearningHANDOFF.md` + `memory/` 下 4 个记忆文件
+2. `git -C Desktop\Learning status` 和 `git -C Desktop\java status` 确认工作区状态（**2026-09-19 收工时两个都 clean 且与远端同步**）
+3. 确认虚拟机 MySQL/Redis 连得上（`Test-NetConnection 192.168.133.128 -Port 3306`）
+4. 问他"今天学什么"时，**按剩余时间给计划 + 明确主线**，末尾附 README 行与 commit message
