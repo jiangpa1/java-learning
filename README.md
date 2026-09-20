@@ -56,9 +56,10 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.16 | 项目实战：文章详情Redis缓存(Cache Aside/浏览量Redis计数/空值防穿透)、Controller改构造器注入、清理冗余索引；计网TCP三次握手四次挥手；前端JS入门 | \#35, #875 |
 | 9.17 | 项目实战：JWT双Token(access30m+refresh7d、type校验、登出黑名单、refresh轮转)、修复同秒签发token相同的jti缺陷、安全层fail-closed vs 性能层fail-open；知识库补3条JWT条目；力扣长度最小的子数组 | \#209 |
 | 9.18 | 项目实战：逻辑删除(@TableLogic+唯一索引冲突取舍)、角色权限(@RequireRole+授权拦截器+水平/纵向越权)、refresh异常处理(500→401)、接口限流(滑动窗口+Lua+拦截器顺序)、六处Redis依赖降级实测；代码审查修复8个缺陷；4份设计文档回填实现记录；知识库补6条 | - |
-| 9.20 | **Docker 化部署（简历差异点）**：① 补 `spring-boot-maven-plugin` —— 原来 `mvn package` 只出 0.1MB 瘦 jar、连 Main-Class 都没有，`java -jar` 必失败（IDEA 跑 main() 从不碰 jar 所以一直没暴露），修后 45MB 可执行 fat jar；② **多阶段构建**（`maven:3.9-eclipse-temurin-17` → `eclipse-temurin:17-jre`，非 root uid=999、TZ=Asia/Shanghai、exec 形式 ENTRYPOINT 才收得到 SIGTERM）；③ `docker compose` 起 MySQL+Redis+应用（healthcheck + `depends_on: service_healthy` 解决启动竞态；MySQL 映射 **3307** 避开本机 3306）；④ **`.dockerignore` 挡住 `application-local.yml`** —— 否则密码会被 `COPY src` 烤进镜像；⑤ `application-docker.yml` 只写容器拓扑（service 名 mysql/redis）+ 口令占位符，`SPRING_PROFILES_ACTIVE=docker`；⑥ mysql-init 首次启动自动建四表。**端到端实测**：注册→登录→带 token 调 `/category/list` 全 200、普通用户发分类 403、**镜像内无 application-local.yml**、**容器库行数=1 证明连的是容器库不是虚拟机**。网络收口「从输入 URL 到页面展示」；力扣 xxx | #xxx |
+| 9.19 | 计算机网络：HTTP报文/方法语义(安全与幂等)/状态码(401vs403vs429vs503)/HTTP缓存(强缓存vs协商缓存)/Cookie-Session与JWT对比、HTTPS握手与证书链(混合加密原理)；项目实战：用户列表分页、请求体解析异常(500→400)、文章分类关联校验、**改密码接口(改完删refreshKey强制下线)**、**分页组件化(PageQueryDTO+越界返400)**、补3类参数异常处理器(否则返500)；**单元测试入门**(JUnit5+Mockito，51个用例覆盖降级方向与已修缺陷)；用户模块接口文档按实现重写；全局异常处理器补注释；知识库补4条；**晚间：文档一致性收尾**(四表 DDL 按 `SHOW CREATE TABLE` 与库逐字对齐、逻辑删除验收项改正、列表页浏览量滞后落文档)、**新增 Learning/README.md**、**接入 Knife4j 在线接口文档**(22 接口可在线调试，踩通三个坑)、**6 个类补 `@ToString.Exclude`** 防日志泄露、端口 8080→8081 全文档同步、知识库补 1 条(refreshToken 被盗的危害与防护) | \#56 |
+| 9.20 | Docker 部署：补 spring-boot-maven-plugin(瘦jar→可执行fat jar)、.dockerignore 挡住 application-local.yml 不进镜像、多阶段构建 + docker-compose 起 MySQL/Redis/应用、配置全走环境变量；网络收口「从输入 URL 到页面展示」 | #438 |
 
 ## 项目
 
 - 博客系统 Learning（进行中）：**22 个接口**，含 JWT 双 Token 鉴权、Redis 缓存、逻辑删除、角色权限、接口限流、51 个单元测试、**Knife4j 在线接口文档（`/doc.html`）**、**Docker 化部署（多阶段构建 + `docker compose` 一键起全栈）**
-- 秒杀 Demo（待开始）
+- 海南麻将

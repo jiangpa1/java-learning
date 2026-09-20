@@ -3,3 +3,6 @@ node_modules/
 *.iml
 ~$*
 out/
+
+# 简历（含个人联系方式，仓库是 public，禁止提交）
+简历*.md
