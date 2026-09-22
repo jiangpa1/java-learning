@@ -92,12 +92,22 @@
 | --- | --- |
 | 位置 | `F:\HainanMaJhong2` |
 | 仓库 | `https://github.com/jiangpa1/HainanMaJhong`（public，分支 `main`） |
-| **线上** | **`http://jiangpahnmj.cn`**（2026-09-19 复核 HTTP 200，nginx/1.18.0） |
+| **线上** | **`http://jiangpahnmj.cn`** —— 2026-09-20 复核：`/`、`/index.html`、`/lobby.html`、`/game.html`、`/api/room/pending` 全部 200，`nginx/1.18.0 (Ubuntu)`。⚠️ **只有 HTTP，没有 HTTPS**（`https://` 超时）；⚠️ 域名解析出 **19 个阿里云 IP**（跨北京/上海/深圳/杭州），需自己确认是 CDN 还是轮询配置 |
 | 技术栈 | Spring Boot 2.7.18 + **原生 WebSocket** + MySQL + Redis + 静态 HTML/JS（无前端框架） |
-| 规模 | **54 个 Java 文件 / 8445 行** + 8 个前端文件（2026-09-19 实测） |
-| 它自己的交接 | `F:\HainanMaJhong2\HANDOFF.md`（**96 行**，很详实，恢复该任务时先读） |
+| 规模 | **`HainanMaJhong` 模块（他写的代码）：38 个 Java 文件 / 6679 行** + 76 个前端文件（2026-09-20 实测）。⚠️ 之前写的"54 / 8445"是**把 `mjlib_java` 参考库也算进去的全树合计** —— **简历上只能用 38 / 6679** |
+| 它自己的交接 | `F:\HainanMaJhong2\HANDOFF.md`（**实测 209 行**，很详实，恢复该任务时先读）。⚠️ 但它是 **2026-09-09** 写的，之后有 09-13/09-17 的改动，已多处过时 |
 
-**为什么是"最强"**：它具备简历上最稀缺的三个要素 —— **真实上线 + 自有域名 + 多人实时联机**（Learning 是本地跑的 CRUD 项目）。8445 行的规模也够讲。
+**为什么是"最强"**：它具备简历上最稀缺的三个要素 —— **真实上线 + 自有域名 + 多人实时联机**（Learning 是本地跑的 CRUD 项目）。6679 行的规模也够讲。
+
+**读那份 209 行的文档之前，先按 2026-09-20 的复核结论对一遍**：
+
+| 它里面写的 | 实际（2026-09-20 实测） |
+| --- | --- |
+| 当前分支 `v4-update`（已 push origin） | **`main`** —— 远端**只有 `main`，`v4-update` 已不存在**（09-17 为凭据清理改的名） |
+| "大量未提交改动在工作区"、"`application.yml` 未提交且含密码默认值" | **工作区干净（0 个未提交）**；`application.yml` 已**凭据环境变量化并提交** |
+| "命令行无 mvn"，要手拼 classpath 编译 | **mvn 现在可用**：`C:\Users\ASUS\tools\apache-maven-3.9.16\bin\mvn.cmd`（配好 `JAVA_HOME` 即可），打包直接用 `mvn clean package` |
+| 验证命令用 `?v=20260907g` | 线上实际是 **`?v=20260908d`** |
+| 完全没提凭据事故 | 09-17 已完成：轮换 MySQL/Redis 密码、`filter-repo` 清洗全部历史、删 `target/`、停跟踪 19 个文件、分支改名、全新克隆验证（仓库 48MB → 10.4MB） |
 
 ### ⚠️ 写简历前必须知道的两件事
 
