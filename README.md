@@ -59,6 +59,7 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.19 | 计算机网络：HTTP报文/方法语义(安全与幂等)/状态码(401vs403vs429vs503)/HTTP缓存(强缓存vs协商缓存)/Cookie-Session与JWT对比、HTTPS握手与证书链(混合加密原理)；项目实战：用户列表分页、请求体解析异常(500→400)、文章分类关联校验、**改密码接口(改完删refreshKey强制下线)**、**分页组件化(PageQueryDTO+越界返400)**、补3类参数异常处理器(否则返500)；**单元测试入门**(JUnit5+Mockito，51个用例覆盖降级方向与已修缺陷)；用户模块接口文档按实现重写；全局异常处理器补注释；知识库补4条；**晚间：文档一致性收尾**(四表 DDL 按 `SHOW CREATE TABLE` 与库逐字对齐、逻辑删除验收项改正、列表页浏览量滞后落文档)、**新增 Learning/README.md**、**接入 Knife4j 在线接口文档**(22 接口可在线调试，踩通三个坑)、**6 个类补 `@ToString.Exclude`** 防日志泄露、端口 8080→8081 全文档同步、知识库补 1 条(refreshToken 被盗的危害与防护) | \#56 |
 | 9.20 | Docker 部署：补 spring-boot-maven-plugin(瘦jar→可执行fat jar)、.dockerignore 挡住 application-local.yml 不进镜像、多阶段构建 + docker-compose 起 MySQL/Redis/应用、配置全走环境变量；网络收口「从输入 URL 到页面展示」 | #438 |
 | 9.21 | 操作系统：进程vs线程(资源分配vs调度单位、PCB、私有栈与共享堆)、进程五状态与合法/非法转换(含挂起态)、上下文切换代价(寄存器/PCB/页表→TLB失效、Linux PCID)、线程实现三模型(用户级/内核级/混合、Java线程=内核级1:1、JDK21虚拟线程)、进程间通信IPC核心对比表；力扣扁平化二叉树为链表 | #114 |
+| 9.22 | 操作系统：虚拟内存(直接操作物理内存的三个噩梦、隔离/超额分配/简化加载)、分页vs分段与段页式、地址翻译(单级页表为何是死路、多级页表、TLB快表、与上下文切换的联动)、缺页中断完整生命周期、页面置换(OPT/FIFO/LRU/Clock、Belady异常、精确LRU为何内核里做不到)、伙伴系统与Slab；串起JVM堆/GC/TLB+HugePages/Redis淘汰/InnoDB BufferPool/mmap零拷贝；力扣二叉搜索树中第K小的元素 | #230 |
 
 ## 项目
 
