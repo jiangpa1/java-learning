@@ -60,8 +60,10 @@ Java · Spring Boot · MyBatis-Plus · MySQL · Redis · RabbitMQ · Docker · G
 | 9.20 | Docker 部署：补 spring-boot-maven-plugin(瘦jar→可执行fat jar)、.dockerignore 挡住 application-local.yml 不进镜像、多阶段构建 + docker-compose 起 MySQL/Redis/应用、配置全走环境变量；网络收口「从输入 URL 到页面展示」 | #438 |
 | 9.21 | 操作系统：进程vs线程(资源分配vs调度单位、PCB、私有栈与共享堆)、进程五状态与合法/非法转换(含挂起态)、上下文切换代价(寄存器/PCB/页表→TLB失效、Linux PCID)、线程实现三模型(用户级/内核级/混合、Java线程=内核级1:1、JDK21虚拟线程)、进程间通信IPC核心对比表；力扣扁平化二叉树为链表 | #114 |
 | 9.22 | 操作系统：虚拟内存(直接操作物理内存的三个噩梦、隔离/超额分配/简化加载)、分页vs分段与段页式、地址翻译(单级页表为何是死路、多级页表、TLB快表、与上下文切换的联动)、缺页中断完整生命周期、页面置换(OPT/FIFO/LRU/Clock、Belady异常、精确LRU为何内核里做不到)、伙伴系统与Slab；串起JVM堆/GC/TLB+HugePages/Redis淘汰/InnoDB BufferPool/mmap零拷贝；力扣二叉搜索树中第K小的元素 | #230 |
+| 9.23 | 操作系统：五种IO模型(阻塞/非阻塞/多路复用/信号驱动/异步，两阶段表 + "同步异步看的是数据拷贝阶段")、阻塞非阻塞 vs 同步异步的经典混淆、select/poll/epoll 对比(位图 vs 数组 vs 红黑树+就绪链表)、LT与ET(ET必须配非阻塞fd并循环读到 EAGAIN)；收官串"Redis单线程为什么快"(内存 + 串行免锁 + epoll，以及"不是单线程就没有上下文切换"这个更准确的说法) | - |
+| 10.8 | 项目实战：先跑通命令行测试链路(`mvn -o test`；本机 maven 在 `C:\Users\ASUS\tools\apache-maven-3.9.16`，`RedisConnectTest` 是 @SpringBootTest 需要虚拟机故排除)；确认工作区 3 个未提交改动是风格统一而非缺陷 → 提交；**补 `UserServiceImplTest` 34 个用例**(权限判断必须"该拒的拒 + 该放的放"成对测、改角色删 refreshKey 必须无条件执行、404 不能被 403 盖住、role 为 null 不 NPE、防用户名枚举的提示语必须一致、删除类操作 fail-open)；全量 **86 个单测全绿**；清理仓库杂物(1 个空文件 + 4 个可重跑的探针输出) | - |
 
 ## 项目
 
-- 博客系统 Learning（进行中）：**22 个接口**，含 JWT 双 Token 鉴权、Redis 缓存、逻辑删除、角色权限、接口限流、51 个单元测试、**Knife4j 在线接口文档（`/doc.html`）**、**Docker 化部署（多阶段构建 + `docker compose` 一键起全栈）**
+- 博客系统 Learning（进行中）：**22 个接口**，含 JWT 双 Token 鉴权、Redis 缓存、逻辑删除、角色权限、接口限流、**86 个单元测试**、**Knife4j 在线接口文档（`/doc.html`）**、**Docker 化部署（多阶段构建 + `docker compose` 一键起全栈）**、**GitHub Actions 构建推镜像到 ghcr.io**
 - 海南麻将
