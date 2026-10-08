@@ -52,8 +52,9 @@
 
 | 仓库 | 本地目录 | 装什么 |
 | --- | --- | --- |
-| **`jiangpa1/Learning`** | `C:\Users\ASUS\Desktop\**Learning**` | **博客项目本体**：`src/main/java` 代码、`md/` 下的设计文档与接口文档、根目录 `LearningHANDOFF.md` 与 **`README.md`**（README 面向访客/面试官，2026-09-19 新增） |
-| **`jiangpa1/java-learning`** | `C:\Users\ASUS\Desktop\**java**` | **笔记与练习**：`day1…dayN/` 每日练习、`Java后端知识库.md`、`README.md`（每日记录表）、本文件 |
+| **`jiangpa1/LearningBlog`** ⚠️ | `C:\Users\ASUS\Desktop\**Learning**` | **博客项目本体**：`src/main/java` 代码、`md/` 下的设计文档与接口文档、根目录 `LearningHANDOFF.md` 与 **`README.md`**（README 面向访客/面试官，2026-09-19 新增）。**2026-10-08 发现仓库已由 `jiangpa1/Learning` 改名为 `LearningBlog`**，旧地址只是重定向 |
+| **`jiangpa1/java-learning`** | `C:\Users\ASUS\Desktop\**java**` | **笔记与练习**：`day1…dayN/` 每日练习、`text/Java后端知识库.md`、`README.md`（每日记录表）、本文件 |
+| **`jiangpa1/HainanMaJhong`** | `F:\HainanMaJhong2` | **海麻项目本体**（见第五节） |
 
 **⚠️ 病根**：`Desktop\java` 是**每日练习归档目录，真实项目不在这里**。上一版交接文档就是把这俩搞混了，才写出"项目在 `Desktop\java` 下"。
 
